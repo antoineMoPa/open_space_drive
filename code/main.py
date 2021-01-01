@@ -3,7 +3,7 @@ from math import pi, sin, cos
 from direct.showbase.ShowBase import ShowBase
 from direct.task import Task
 from direct.actor.Actor import Actor
-from panda3d.core import DirectionalLight
+from panda3d.core import AmbientLight, DirectionalLight
 
 from panda3d.core import NodePath
 from panda3d.core import Vec3
@@ -13,12 +13,14 @@ class CarController():
         self.model = model
         self.acceleration = Vec3(0,0,0)
         self.velocity = Vec3(0,0,0)
+        self.direction = Vec3(0,-1,0)
         self.angular_velocity = Vec3(0,0,0) # Heading Pitch Roll
 
 
-        self.angular_velocity_damping = 0.97
+        self.angular_velocity_damping = 0.94
         self.velocity_damping = 0.97
         self.acceleration_damping = 0.1
+        self.last_is_going_forward = True
 
     def updatePos(self):
         # TODO: add delta time as argument and use it to adapt
@@ -30,8 +32,7 @@ class CarController():
         self.velocity *= self.velocity_damping
         self.acceleration *= self.acceleration_damping
         self.angular_velocity *= self.angular_velocity_damping
-
-
+        self.direction = self.model.getNetTransform().get_mat().getRow3(1)
 
 class MyApp(ShowBase):
     def __init__(self):
@@ -45,9 +46,8 @@ class MyApp(ShowBase):
         dae.setHpr(0,90,0)
         self.scene = dae
 
-        dlight = DirectionalLight('my dlight')
-        dlnp = render.attachNewNode(dlight)
-        render.setLight(dlnp)
+
+        self.addLights()
 
         #barrier = m.find('Scene').find('right_barrier')
         #barrier.set_pos(1,1,1)
@@ -57,35 +57,92 @@ class MyApp(ShowBase):
 
         self.car_controller = CarController(self.car)
 
+        self.is_last_acceleration_forward = True
 
         self.bindKeys()
 
+    def addLights(self):
+        dlight = DirectionalLight('global_dlight')
+        dlnp = render.attachNewNode(dlight)
+        render.setLight(dlnp)
+
+        dlight = DirectionalLight('camera_dlight')
+        dlnp = render.attachNewNode(dlight)
+        render.setLight(dlnp)
+
+        self.dlightnp = dlnp
+
+        alight = AmbientLight('alight')
+        alight.setColor((0.2, 0.2, 0.2, 0.3))
+        alnp = render.attachNewNode(alight)
+        render.setLight(alnp)
+
+
+
     def bindKeys(self):
-        self.accept('w-repeat', self.forward)    # Gas
-        self.accept('s-repeat', self.backward)   # Gas (back)
-        self.accept('a-repeat', self.left)       # Turn left
-        self.accept('d-repeat', self.right)      # Turn right
+        self.keys = dict()
+        self.addNewListenedKey('w')      # Forward
+        self.addNewListenedKey('s')      # Backward
+        self.addNewListenedKey('space')  # Slow down
+        self.addNewListenedKey('a')      # Turn left
+        self.addNewListenedKey('d')      # Turn right
 
-    def forward(self):
-        self.car_controller.acceleration += Vec3(0.0,0.3,0.0)
+    def addNewListenedKey(self, key):
+        """ Binds event listeners for keyboard events for one key"""
+        self.keys[key] = False
+        self.accept(key, self.keyDown, [key])
+        self.accept(key + '-up', self.keyUp, [key])
 
-    def left(self):
-        self.car_controller.angular_velocity += Vec3(0.1,0.0,0.0)
+    def keyDown(self, keyName):
+        """ Key down listener """
+        self.keys[keyName] = True
 
-    def right(self):
-        self.car_controller.angular_velocity -= Vec3(0.1,0.0,0.0)
-
-    def backward(self):
-        self.car_controller.acceleration -= Vec3(0.0,0.3,0.0)
-
+    def keyUp(self, keyName):
+        """ Key up listener """
+        self.keys[keyName] = False
 
     def cameraFollowTask(self, task):
-        self.camera.setPos(self.car.getX(), self.car.getY()-20, 6)
-        self.camera.headsUp(self.car)
+        currentCameraPosition = self.camera.getPos()
+        cameraFinalPosition = (self.car.getPos() -
+                               self.car_controller.direction * 20.0 +
+                               Vec3(0,0,6))
 
+        convergeSpeed = 0.99
+        self.camera.setPos((cameraFinalPosition   * convergeSpeed) +
+                           (currentCameraPosition * (1.0-convergeSpeed)))
+
+
+        #self.camera.setPos(cameraFinalPosition)
+
+
+        self.camera.headsUp(self.car)
+        self.dlightnp.setPos(self.camera.getPos())
+        self.dlightnp.headsUp(self.car)
         return Task.cont
 
     def updateCarPositionTask(self, task):
+
+        if self.keys['w']:
+            self.car_controller.acceleration += self.car_controller.direction.normalized() * 0.05
+            self.is_last_acceleration_forward = True
+        elif self.keys['s']:
+            self.car_controller.acceleration -= self.car_controller.direction.normalized() * 0.05
+            self.is_last_acceleration_forward = False
+        elif self.keys['space']:
+            self.car_controller.acceleration *= 0.9
+            self.car_controller.velocity *= 0.7
+
+        if self.keys['a'] or self.keys['d']:
+            factor = 0.2
+
+            if self.keys['d']:
+                factor *= -1
+
+            if not self.is_last_acceleration_forward:
+                factor *= -1
+
+            self.car_controller.angular_velocity += Vec3(factor,0.0,0.0)
+
         self.car_controller.updatePos()
         return Task.cont
 
