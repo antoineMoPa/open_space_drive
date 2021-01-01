@@ -107,12 +107,12 @@ class MyApp(ShowBase):
                                self.car_controller.direction * 20.0 +
                                Vec3(0,0,6))
 
-        convergeSpeed = 0.99
-        self.camera.setPos((cameraFinalPosition   * convergeSpeed) +
-                           (currentCameraPosition * (1.0-convergeSpeed)))
+        #convergeSpeed = 0.99
+        #self.camera.setPos((cameraFinalPosition   * convergeSpeed) +
+        #                   (currentCameraPosition * (1.0-convergeSpeed)))
 
 
-        #self.camera.setPos(cameraFinalPosition)
+        self.camera.setPos(cameraFinalPosition)
 
 
         self.camera.headsUp(self.car)
