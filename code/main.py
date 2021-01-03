@@ -6,7 +6,7 @@ from direct.actor.Actor import Actor
 from panda3d.core import AmbientLight, DirectionalLight
 
 from panda3d.core import NodePath
-from panda3d.core import Vec3
+from panda3d.core import Vec3, Vec4
 
 class CarController():
     def __init__(self, model):
@@ -17,22 +17,37 @@ class CarController():
         self.angular_velocity = Vec3(0,0,0) # Heading Pitch Roll
 
 
-        self.angular_velocity_damping = 0.94
-        self.velocity_damping = 0.97
+        self.angular_velocity_damping = 0.99
+        self.velocity_damping = 0.99
         self.acceleration_damping = 0.1
         self.last_is_going_forward = True
 
-    def updatePos(self):
-        # TODO: add delta time as argument and use it to adapt
-        # this code for varying fps
-        self.velocity += self.acceleration
-        self.model.setPos(self.model.getPos() + self.velocity)
-        self.model.setHpr(self.model.getHpr() + self.angular_velocity)
+    def brake(self, dt):
+        self.acceleration *= 0.94 * (dt * 60)
+        self.velocity *= 0.94 * (dt * 60)
+        self.angular_velocity *= 0.94 * (dt * 60)
 
-        self.velocity *= self.velocity_damping
-        self.acceleration *= self.acceleration_damping
-        self.angular_velocity *= self.angular_velocity_damping
+    def upVector(self):
+        return self.model.getNetTransform().get_mat().xformVec(Vec3(0,0,1))
+
+    def rightVector(self):
+        car_right_vec = self.model.getNetTransform().get_mat().xformVec(Vec3(1,0,0))
+
+    def updatePos(self, dt):
+        self.velocity += self.acceleration * (dt * 60)
+        self.model.setPos(self.model.getPos() + self.velocity * (dt * 60))
+
+        self.model.getNetTransform().get_mat().getRow3(1)
+
+        self.model.setHpr(self.model, self.model.getHpr(self.model) + self.angular_velocity)
+
+        self.velocity *= self.velocity_damping * (dt * 60)
+        self.acceleration *= self.acceleration_damping * (dt * 60)
+        self.angular_velocity *= self.angular_velocity_damping * (dt * 60)
         self.direction = self.model.getNetTransform().get_mat().getRow3(1)
+
+        blend_velocity = 0.2 * (dt*30)
+        self.velocity = self.velocity.project(self.direction) * (1.0 - blend_velocity) + self.velocity * blend_velocity
 
 class MyApp(ShowBase):
     def __init__(self):
@@ -45,7 +60,7 @@ class MyApp(ShowBase):
         dae.reparentTo(render)
         dae.setHpr(0,90,0)
         self.scene = dae
-
+        self.last_cam_pos = Vec3(0.0)
 
         self.addLights()
 
@@ -57,7 +72,9 @@ class MyApp(ShowBase):
 
         self.car_controller = CarController(self.car)
 
-        self.is_last_acceleration_forward = True
+        self.last_update_car_time = None
+        self.last_update_camera_time = None
+        self.is_backing_up = True
 
         self.bindKeys()
 
@@ -73,19 +90,9 @@ class MyApp(ShowBase):
         self.dlightnp = dlnp
 
         alight = AmbientLight('alight')
-        alight.setColor((0.2, 0.2, 0.2, 0.3))
+        alight.setColor((0.2, 0.2, 0.2, 0.1))
         alnp = render.attachNewNode(alight)
         render.setLight(alnp)
-
-
-
-    def bindKeys(self):
-        self.keys = dict()
-        self.addNewListenedKey('w')      # Forward
-        self.addNewListenedKey('s')      # Backward
-        self.addNewListenedKey('space')  # Slow down
-        self.addNewListenedKey('a')      # Turn left
-        self.addNewListenedKey('d')      # Turn right
 
     def addNewListenedKey(self, key):
         """ Binds event listeners for keyboard events for one key"""
@@ -102,48 +109,99 @@ class MyApp(ShowBase):
         self.keys[keyName] = False
 
     def cameraFollowTask(self, task):
-        currentCameraPosition = self.camera.getPos()
-        cameraFinalPosition = (self.car.getPos() -
-                               self.car_controller.direction * 20.0 +
-                               Vec3(0,0,6))
+        if self.last_update_camera_time is None:
+            self.last_update_camera_time = task.time - 0.01
 
-        #convergeSpeed = 0.99
-        #self.camera.setPos((cameraFinalPosition   * convergeSpeed) +
-        #                   (currentCameraPosition * (1.0-convergeSpeed)))
+        dt = task.time - self.last_update_camera_time
 
+        car_dir = self.car_controller.direction
 
-        self.camera.setPos(cameraFinalPosition)
+        current_cam_pos = self.last_cam_pos
+        self.camera.setPos(self.car, Vec3(0.0,-25.0,4.0))
+        target_cam_pos = self.camera.getPos()
+        convergeSpeed = 8.0 * dt
 
+        self.last_cam_pos = (current_cam_pos * (1.0-convergeSpeed) + (target_cam_pos * convergeSpeed))
+        self.camera.setPos(self.last_cam_pos)
 
-        self.camera.headsUp(self.car)
+        self.camera.setHpr(self.car.getHpr())
         self.dlightnp.setPos(self.camera.getPos())
         self.dlightnp.headsUp(self.car)
+
+        self.last_update_camera_time = task.time
+
         return Task.cont
 
+    def bindKeys(self):
+        self.keys = dict()
+        self.addNewListenedKey('w')            # Forward
+        self.addNewListenedKey('s')            # Backward
+        self.addNewListenedKey('q')            # Up
+        self.addNewListenedKey('e')            # Down
+        self.addNewListenedKey('space')        # Slow down
+        self.addNewListenedKey('a')            # Turn left
+        self.addNewListenedKey('d')            # Turn right
+        self.addNewListenedKey('arrow_up')     # Head down
+        self.addNewListenedKey('arrow_down')   # Head up
+        self.addNewListenedKey('arrow_left')   # Roll left
+        self.addNewListenedKey('arrow_right')  # Roll right
+
+
     def updateCarPositionTask(self, task):
+        ROLL_LEFT_KEY  = "arrow_left"
+        ROLL_RIGHT_KEY = "arrow_right"
+        TURN_LEFT_KEY  = "a"
+        TURN_RIGHT_KEY = "d"
+
+        if self.last_update_car_time is None:
+            self.last_update_car_time = task.time - 0.01
+
+        dt = task.time - self.last_update_car_time
 
         if self.keys['w']:
-            self.car_controller.acceleration += self.car_controller.direction.normalized() * 0.05
-            self.is_last_acceleration_forward = True
+            self.car_controller.acceleration += self.car_controller.direction.normalized() * 1.2 * dt
+            self.is_backing_up = False
         elif self.keys['s']:
-            self.car_controller.acceleration -= self.car_controller.direction.normalized() * 0.05
-            self.is_last_acceleration_forward = False
+            self.car_controller.acceleration -= self.car_controller.direction.normalized() * 0.5 * dt
+            if self.car_controller.velocity.length() < 0.4:
+                self.is_backing_up = True
         elif self.keys['space']:
-            self.car_controller.acceleration *= 0.9
-            self.car_controller.velocity *= 0.7
+            self.car_controller.brake(dt)
 
-        if self.keys['a'] or self.keys['d']:
-            factor = 0.2
+        if self.keys['q']:
+            self.car_controller.acceleration += self.car_controller.upVector() * 3.2 * dt
+        if self.keys['e']:
+            self.car_controller.acceleration -= self.car_controller.upVector() * 3.2 * dt
 
-            if self.keys['d']:
+        carRotateMatrix = self.car.get_mat().rotateMat(0,axis=1)
+
+        if self.keys['arrow_up']:
+            self.car_controller.angular_velocity += Vec3(0.0,-1.50,0) * dt
+        if self.keys['arrow_down']:
+            self.car_controller.angular_velocity += Vec3(0.0,1.50,0) * dt
+
+        if self.keys[TURN_LEFT_KEY]:
+            self.car_controller.angular_velocity += Vec3(0.0,0.0,-2.00) * dt
+        if self.keys[TURN_RIGHT_KEY]:
+            self.car_controller.angular_velocity += Vec3(0.0,0.0,2.00) * dt
+
+
+        if self.keys[ROLL_LEFT_KEY] or self.keys[ROLL_RIGHT_KEY]:
+            factor = 2.0 * dt
+
+            if self.keys[ROLL_RIGHT_KEY]:
                 factor *= -1
 
-            if not self.is_last_acceleration_forward:
+            if self.is_backing_up:
                 factor *= -1
+                factor *= 2.0
 
+            # Main rotation axis
             self.car_controller.angular_velocity += Vec3(factor,0.0,0.0)
 
-        self.car_controller.updatePos()
+        self.last_update_car_time = task.time
+
+        self.car_controller.updatePos(dt)
         return Task.cont
 
 
