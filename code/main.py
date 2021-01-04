@@ -1,12 +1,14 @@
-from math import pi, sin, cos
+from math import pi, sin, cos, inf
 
 from direct.showbase.ShowBase import ShowBase
 from direct.task import Task
 from direct.actor.Actor import Actor
-from panda3d.core import AmbientLight, DirectionalLight
-
+from panda3d.core import AmbientLight
+from panda3d.core import DirectionalLight
+from panda3d.core import GeomVertexReader
 from panda3d.core import NodePath
-from panda3d.core import Vec3, Vec4
+from panda3d.core import Vec3
+from panda3d.core import Vec4
 
 class CarController():
     def __init__(self, model):
@@ -33,6 +35,85 @@ class CarController():
     def rightVector(self):
         car_right_vec = self.model.getNetTransform().get_mat().xformVec(Vec3(1,0,0))
 
+    def setPathModel(self, geom):
+        # Credit: Most code in this function comes from panda3d's docs
+        self.road_segments = []
+
+        def processGeom(geom):
+            vdata = geom.getVertexData()
+            for i in range(geom.getNumPrimitives()):
+                prim = geom.getPrimitive(i)
+                processPrimitive(prim, vdata)
+
+        def processPrimitive(prim, vdata):
+            vertex = GeomVertexReader(vdata, 'vertex')
+            prim = prim.decompose()
+            last = None
+            for p in range(prim.getNumPrimitives()):
+                s = prim.getPrimitiveStart(p)
+                e = prim.getPrimitiveEnd(p)
+                for i in range(s, e):
+                    vi = prim.getVertex(i)
+                    vertex.setRow(vi)
+                    v = vertex.getData3()
+                    if last is not None:
+                        self.road_segments.append([last, v])
+                    last = v
+
+
+        processGeom(geom)
+
+
+    def pointSegmentShortestPath(self, Point, SegmentP1, SegmentP2):
+        """
+        Point-Segment Shortest Path
+
+        Finds the shortest path between a point and road segment delimited by
+        2 points (SegmentP1, SegmentP2).
+
+        The value None is returned if the point cannot be found in a cylinder centered on
+        the vector between P1 and P2 and delimited by these points. (whatever the radius)
+
+        """
+        SegmentVector = SegmentP2 - SegmentP1
+        Len = SegmentVector.length()
+        Projection = (Point - SegmentP1).project(SegmentVector)
+
+        if Projection.x < 0 or Projection.y < 0 or Projection.z < 0:
+            return None
+        if Projection.x > Len or Projection.y > Len or Projection.z > Len:
+            return None
+
+        ShortestPath = Point - (Projection +  SegmentP1)
+
+        return ShortestPath
+
+    def alignCarWithForceFields(self, dt):
+        for segment in self.road_segments:
+            path = self.pointSegmentShortestPath(self.model.getPos(), segment[0], segment[1])
+            if path is not None and path.length() < 10:
+                v = Vec3(segment[0] - segment[1])
+                angle = v.normalized().angleDeg(self.direction.normalized())
+                if angle > 90 or angle < -90:
+                    v = Vec3(segment[1] - segment[0])
+                    angle = v.normalized().angleDeg(self.direction.normalized())
+
+                initialAngle = self.model.getHpr()
+                self.model.lookAt(self.model.getPos() + v * 1000.0)
+                targetAngle = self.model.getHpr()
+
+
+                strength = 4 * dt
+                strength = sorted([0,strength,1])[1]
+                self.model.setHpr(initialAngle * (1.0 - strength) + targetAngle * strength)
+
+                strength = sorted([0,strength,1])[1]
+
+                self.model.setPos(self.model.getPos() - path * strength)
+
+                break
+
+
     def updatePos(self, dt):
         self.velocity += self.acceleration * (dt * 60)
         self.model.setPos(self.model.getPos() + self.velocity * (dt * 60))
@@ -46,8 +127,11 @@ class CarController():
         self.angular_velocity *= self.angular_velocity_damping * (dt * 60)
         self.direction = self.model.getNetTransform().get_mat().getRow3(1)
 
+        self.alignCarWithForceFields(dt)
+
         blend_velocity = 0.2 * (dt*30)
         self.velocity = self.velocity.project(self.direction) * (1.0 - blend_velocity) + self.velocity * blend_velocity
+
 
 class MyApp(ShowBase):
     def __init__(self):
@@ -74,7 +158,9 @@ class MyApp(ShowBase):
 
         self.last_update_car_time = None
         self.last_update_camera_time = None
-        self.is_backing_up = True
+        self.is_backing_up = False
+
+        self.car_controller.setPathModel(dae.find("Scene").find("road_path").get_node(0).getGeom(0))
 
         self.bindKeys()
 
@@ -90,7 +176,7 @@ class MyApp(ShowBase):
         self.dlightnp = dlnp
 
         alight = AmbientLight('alight')
-        alight.setColor((0.2, 0.2, 0.2, 0.1))
+        alight.setColor((0.2, 0.0, 0.5, 0.3))
         alnp = render.attachNewNode(alight)
         render.setLight(alnp)
 
