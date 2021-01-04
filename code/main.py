@@ -10,6 +10,18 @@ from panda3d.core import NodePath
 from panda3d.core import Vec3
 from panda3d.core import Vec4
 
+class RoadBuilder():
+    def __init__(self, portalModel):
+        self.portalModel = portalModel
+        self.portalModel.setPos(0,0,0)
+
+    def addSegment(self, p1, p2):
+        placeholder = render.attachNewNode("Portal-Placeholder")
+        placeholder.setPos((p1+p2)*0.5)
+        placeholder.lookAt(p2)
+        self.portalModel.instanceTo(placeholder)
+
+
 class CarController():
     def __init__(self, model):
         self.model = model
@@ -35,7 +47,7 @@ class CarController():
     def rightVector(self):
         car_right_vec = self.model.getNetTransform().get_mat().xformVec(Vec3(1,0,0))
 
-    def setPathModel(self, geom):
+    def setPathModel(self, geom, roadBuilder):
         # Credit: Most code in this function comes from panda3d's docs
         self.road_segments = []
 
@@ -48,16 +60,17 @@ class CarController():
         def processPrimitive(prim, vdata):
             vertex = GeomVertexReader(vdata, 'vertex')
             prim = prim.decompose()
-            last = None
             for p in range(prim.getNumPrimitives()):
                 s = prim.getPrimitiveStart(p)
                 e = prim.getPrimitiveEnd(p)
+                last  = None
                 for i in range(s, e):
                     vi = prim.getVertex(i)
                     vertex.setRow(vi)
                     v = vertex.getData3()
                     if last is not None:
                         self.road_segments.append([last, v])
+                        roadBuilder.addSegment(last, v)
                     last = v
 
 
@@ -71,47 +84,63 @@ class CarController():
         Finds the shortest path between a point and road segment delimited by
         2 points (SegmentP1, SegmentP2).
 
-        The value None is returned if the point cannot be found in a cylinder centered on
+        The value inf is returned if the point cannot be found in a cylinder centered on
         the vector between P1 and P2 and delimited by these points. (whatever the radius)
+        (with a tolerance that slightly increases cylinder length)
 
         """
         SegmentVector = SegmentP2 - SegmentP1
         Len = SegmentVector.length()
         Projection = (Point - SegmentP1).project(SegmentVector)
 
-        if Projection.x < 0 or Projection.y < 0 or Projection.z < 0:
+        # Tolerance
+        tol = 0.2
+
+        if Projection.x < -tol or Projection.y < -tol or Projection.z < -tol:
             return None
-        if Projection.x > Len or Projection.y > Len or Projection.z > Len:
+        if Projection.x > Len + tol or Projection.y > Len + tol or Projection.z > Len + tol:
             return None
 
-        ShortestPath = Point - (Projection +  SegmentP1)
+        ShortestPath = (Point - SegmentP1) - Projection
 
         return ShortestPath
 
     def alignCarWithForceFields(self, dt):
+        forceFieldsPaths = []
+
         for segment in self.road_segments:
             path = self.pointSegmentShortestPath(self.model.getPos(), segment[0], segment[1])
-            if path is not None and path.length() < 10:
-                v = Vec3(segment[0] - segment[1])
+            if path is not None:
+                forceFieldsPaths.append((path.length(), path, segment[0], segment[1],))
+
+        closestFields = sorted(forceFieldsPaths,key=lambda x: x[0])
+
+        for field in closestFields:
+            (length, path, segment0, segment1) = field
+            path = self.pointSegmentShortestPath(self.model.getPos(), segment0, segment1)
+            if length > 10.0:
+                continue
+
+            v = Vec3(segment0 - segment1)
+            angle = v.normalized().angleDeg(self.direction.normalized())
+            if angle > 90 or angle < -90:
+                v = Vec3(segment1 - segment0)
                 angle = v.normalized().angleDeg(self.direction.normalized())
-                if angle > 90 or angle < -90:
-                    v = Vec3(segment[1] - segment[0])
-                    angle = v.normalized().angleDeg(self.direction.normalized())
 
-                initialAngle = self.model.getHpr()
-                self.model.lookAt(self.model.getPos() + v * 1000.0)
-                targetAngle = self.model.getHpr()
+            initialAngle = self.model.getHpr()
+            self.model.lookAt(self.model.getPos() + v * 1000.0)
+            targetAngle = self.model.getHpr()
 
+            strength = 10 * dt
+            print(path.length())
+            strength = sorted([0,strength,1])[1]
+            self.model.setHpr(initialAngle * (1.0 - strength) + targetAngle * strength)
 
-                strength = 4 * dt
-                strength = sorted([0,strength,1])[1]
-                self.model.setHpr(initialAngle * (1.0 - strength) + targetAngle * strength)
+            strength = sorted([0,strength,1])[1]
 
-                strength = sorted([0,strength,1])[1]
+            self.model.setPos(self.model.getPos() - path * strength)
 
-                self.model.setPos(self.model.getPos() - path * strength)
-
-                break
+            break
 
 
     def updatePos(self, dt):
@@ -148,9 +177,6 @@ class MyApp(ShowBase):
 
         self.addLights()
 
-        #barrier = m.find('Scene').find('right_barrier')
-        #barrier.set_pos(1,1,1)
-
         render.setShaderAuto()
         self.car = dae.find("Scene").find("player_car")
 
@@ -160,7 +186,10 @@ class MyApp(ShowBase):
         self.last_update_camera_time = None
         self.is_backing_up = False
 
-        self.car_controller.setPathModel(dae.find("Scene").find("road_path").get_node(0).getGeom(0))
+
+        roadBuilder = RoadBuilder(dae.find("Scene").find("portal"))
+        self.car_controller.setPathModel(dae.find("Scene").find("road_path").get_node(0).getGeom(0),
+                                         roadBuilder)
 
         self.bindKeys()
 
@@ -203,7 +232,8 @@ class MyApp(ShowBase):
         car_dir = self.car_controller.direction
 
         current_cam_pos = self.last_cam_pos
-        self.camera.setPos(self.car, Vec3(0.0,-25.0,4.0))
+        #self.camera.setPos(self.car, Vec3(0.0,-25.0,4.0))
+        self.camera.setPos(self.car, Vec3(0.0,-25.0,0.0))
         target_cam_pos = self.camera.getPos()
         convergeSpeed = 8.0 * dt
 
