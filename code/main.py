@@ -1,3 +1,4 @@
+
 from math import pi, sin, cos, inf
 
 from direct.showbase.ShowBase import ShowBase
@@ -9,6 +10,9 @@ from panda3d.core import GeomVertexReader
 from panda3d.core import NodePath
 from panda3d.core import Vec3
 from panda3d.core import Vec4
+
+
+debugSphere = None
 
 class RoadBuilder():
     def __init__(self, portalModel):
@@ -22,6 +26,18 @@ class RoadBuilder():
         self.portalModel.instanceTo(placeholder)
 
 
+
+def vectorRatio(v1, v2):
+    def zerodiv(x,y):
+        return 0 if y == 0 else x/y
+
+    a = zerodiv(v1.x,v2.x)
+    b = zerodiv(v1.y,v2.y)
+    c = zerodiv(v1.z,v2.z)
+
+    return sorted([a,b,c], key=lambda x: abs(x))[-1]
+
+
 class CarController():
     def __init__(self, model):
         self.model = model
@@ -31,7 +47,7 @@ class CarController():
         self.angular_velocity = Vec3(0,0,0) # Heading Pitch Roll
 
 
-        self.angular_velocity_damping = 0.99
+        self.angular_velocity_damping = 0.97
         self.velocity_damping = 0.99
         self.acceleration_damping = 0.1
         self.last_is_going_forward = True
@@ -77,7 +93,7 @@ class CarController():
         processGeom(geom)
 
 
-    def pointSegmentShortestPath(self, Point, SegmentP1, SegmentP2):
+    def pointSegmentShortestPath(self, Point, SegmentP1, SegmentP2, bounds=True):
         """
         Point-Segment Shortest Path
 
@@ -88,58 +104,62 @@ class CarController():
         the vector between P1 and P2 and delimited by these points. (whatever the radius)
         (with a tolerance that slightly increases cylinder length)
 
+        Delimitation is not taken into account if bounds is False.
+
         """
+
+        P = Point - SegmentP1
+
         SegmentVector = SegmentP2 - SegmentP1
         Len = SegmentVector.length()
-        Projection = (Point - SegmentP1).project(SegmentVector)
+        Projection = P.project(SegmentVector)
 
         # Tolerance
-        tol = 0.2
+        tol = -0.1
+        ratio = vectorRatio(Projection, SegmentVector)
 
-        if Projection.x < -tol or Projection.y < -tol or Projection.z < -tol:
-            return None
-        if Projection.x > Len + tol or Projection.y > Len + tol or Projection.z > Len + tol:
+        if bounds == True and (ratio > 1 + tol or ratio < 0 - tol):
             return None
 
-        ShortestPath = (Point - SegmentP1) - Projection
+        ShortestPath = P - Projection
 
         return ShortestPath
 
-    def alignCarWithForceFields(self, dt):
+    def alignCarTowardsForceFields(self, dt):
         forceFieldsPaths = []
 
         for segment in self.road_segments:
             path = self.pointSegmentShortestPath(self.model.getPos(), segment[0], segment[1])
             if path is not None:
-                forceFieldsPaths.append((path.length(), path, segment[0], segment[1],))
+                Len = path.length()
+                if Len < 6:
+                    forceFieldsPaths.append((Len, path, segment[0], segment[1]))
 
         closestFields = sorted(forceFieldsPaths,key=lambda x: x[0])
 
         for field in closestFields:
             (length, path, segment0, segment1) = field
-            path = self.pointSegmentShortestPath(self.model.getPos(), segment0, segment1)
-            if length > 10.0:
-                continue
+            modelPos = self.model.getPos()
 
-            v = Vec3(segment0 - segment1)
-            angle = v.normalized().angleDeg(self.direction.normalized())
-            if angle > 90 or angle < -90:
-                v = Vec3(segment1 - segment0)
-                angle = v.normalized().angleDeg(self.direction.normalized())
+            # Shortest path if the player car would already be a little in front of itself
+            delta_dir = self.direction.normalized() * self.velocity.length() * 50.0
+            path_2 = self.pointSegmentShortestPath(modelPos + delta_dir, segment0, segment1, bounds=False)
 
-            initialAngle = self.model.getHpr()
-            self.model.lookAt(self.model.getPos() + v * 1000.0)
-            targetAngle = self.model.getHpr()
+            if path_2 is None:
+                return
 
-            strength = 10 * dt
-            print(path.length())
-            strength = sorted([0,strength,1])[1]
-            self.model.setHpr(initialAngle * (1.0 - strength) + targetAngle * strength)
+            originalHpr = self.model.getHpr()
+            self.model.lookAt(modelPos + delta_dir - path_2 * 0.3)
+            targetHpr = self.model.getHpr()
+            self.model.setHpr(originalHpr)
 
-            strength = sorted([0,strength,1])[1]
+            strength = 4.0 * dt
 
-            self.model.setPos(self.model.getPos() - path * strength)
+            strength /= sorted([1,path.length()**2,3])[1]
 
+            self.angular_velocity += (targetHpr - originalHpr) * strength
+
+            self.angular_velocity *= 0.9
             break
 
 
@@ -154,12 +174,14 @@ class CarController():
         self.velocity *= self.velocity_damping * (dt * 60)
         self.acceleration *= self.acceleration_damping * (dt * 60)
         self.angular_velocity *= self.angular_velocity_damping * (dt * 60)
-        self.direction = self.model.getNetTransform().get_mat().getRow3(1)
-
-        self.alignCarWithForceFields(dt)
 
         blend_velocity = 0.2 * (dt*30)
         self.velocity = self.velocity.project(self.direction) * (1.0 - blend_velocity) + self.velocity * blend_velocity
+
+        self.alignCarTowardsForceFields(dt)
+
+        self.direction = self.model.getNetTransform().get_mat().getRow3(1)
+
 
 
 class MyApp(ShowBase):
@@ -178,6 +200,12 @@ class MyApp(ShowBase):
         self.addLights()
 
         render.setShaderAuto()
+        base.setBackgroundColor(0.1,0.0,0.2)
+
+        global debugSphere
+        debugSphere = dae.find("Scene").find("debug_sphere")
+        debugSphere.hide()
+
         self.car = dae.find("Scene").find("player_car")
 
         self.car_controller = CarController(self.car)
@@ -232,8 +260,8 @@ class MyApp(ShowBase):
         car_dir = self.car_controller.direction
 
         current_cam_pos = self.last_cam_pos
-        #self.camera.setPos(self.car, Vec3(0.0,-25.0,4.0))
-        self.camera.setPos(self.car, Vec3(0.0,-25.0,0.0))
+        self.camera.setPos(self.car, Vec3(0.0,-25.0,4.0))
+        #self.camera.setPos(self.car, Vec3(0.0,-25.0,0.0))
         target_cam_pos = self.camera.getPos()
         convergeSpeed = 8.0 * dt
 
@@ -303,7 +331,7 @@ class MyApp(ShowBase):
 
 
         if self.keys[ROLL_LEFT_KEY] or self.keys[ROLL_RIGHT_KEY]:
-            factor = 2.0 * dt
+            factor = 4.0 * dt
 
             if self.keys[ROLL_RIGHT_KEY]:
                 factor *= -1
