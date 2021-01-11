@@ -7,12 +7,19 @@ from direct.actor.Actor import Actor
 from panda3d.core import AmbientLight
 from panda3d.core import DirectionalLight
 from panda3d.core import GeomVertexReader
+from panda3d.core import GeomVertexWriter
+from panda3d.core import Geom
+from panda3d.core import GeomTriangles
+from panda3d.core import GeomNode
+from panda3d.core import GeomVertexData
+from panda3d.core import GeomVertexFormat
 from panda3d.core import NodePath
 from panda3d.core import Vec3
 from panda3d.core import Vec4
 from panda3d.core import lookAt
 from panda3d.core import Quat
-
+from panda3d.core import Material
+from panda3d.core import Plane
 
 def move_debug_vector_to(position, look_at):
     vector = render.find("scene.dae").find("Scene").find("debug_vector")
@@ -20,17 +27,97 @@ def move_debug_vector_to(position, look_at):
     vector.lookAt(look_at)
 
 class RoadBuilder():
-    def __init__(self, portalModel):
-        self.portalModel = portalModel
-        self.portalModel.setPos(0,0,0)
+    def __init__(self):
         self.debugSphere = render.find("scene.dae").find("Scene").find("debug_sphere")
         self.debugVector = render.find("scene.dae").find("Scene").find("debug_vector")
 
-    def addSegment(self, p1, p2):
-        placeholder = render.attachNewNode("Portal-Placeholder")
-        placeholder.setPos((p1+p2)*0.5)
-        placeholder.lookAt(p2)
-        self.portalModel.instanceTo(placeholder)
+        self.vdata = GeomVertexData('road', GeomVertexFormat.getV3t2(), Geom.UHStatic)
+        # TODO: call this with right number of rows when it is known
+        # self.vdata.setNumRows()
+        self.vertex = GeomVertexWriter(self.vdata, 'vertex')
+        self.texcoord = GeomVertexWriter(self.vdata, 'texcoord')
+        self.prim = None
+        self.prims = []
+        self.lastv = 0
+        self.vertices = []
+
+    def addPrim(self):
+        if self.prim is not None:
+            for vertex in self.vertices:
+                self.prim.addVertex(vertex)
+
+            self.prims.append(self.prim)
+
+        self.prim = GeomTriangles(Geom.UHStatic)
+
+    def addSegment(self, p0, p1):
+
+        width = 10
+
+        overlap = 1.02
+
+        side = -(p1 - p0).cross(Vec3().up()).normalized() * width
+        length = (p1 - p0) * overlap
+
+        h = (p1 - p0).length()
+
+        v1 = side
+        v2 = side + length
+        v3 = -side + length
+        v4 = -side
+
+        v1 += p0
+        v2 += p0
+        v3 += p0
+        v4 += p0
+
+        self.vertex.addData3(v1)
+        self.texcoord.addData2(1, 0)
+
+        self.vertex.addData3(v2)
+        self.texcoord.addData2(1, 1)
+
+        self.vertex.addData3(v3)
+        self.texcoord.addData2(0, 1)
+
+        self.vertex.addData3(v4)
+        self.texcoord.addData2(0, 0)
+
+        lastv = self.lastv
+        self.vertices.append(0 + lastv)
+        self.vertices.append(1 + lastv)
+        self.vertices.append(2 + lastv)
+        self.vertices.append(3 + lastv)
+        self.vertices.append(2 + lastv)
+        self.vertices.append(0 + lastv)
+
+        self.lastv += 4
+
+    def finish(self):
+        self.geom = Geom(self.vdata)
+
+        for prim in self.prims:
+            self.geom.addPrimitive(prim)
+
+        self.road_visual_node = GeomNode('road_node')
+        visnode = self.road_visual_node
+        visnode.addGeom(self.geom)
+
+        self.road_visual_nodePath = render.attachNewNode(visnode)
+        nodepath = self.road_visual_nodePath
+        nodepath.setTwoSided(True)
+        nodepath.setTransparency(True)
+        nodepath.setAlphaScale(0.5)
+        nodepath.setMaterial(self.getRoadMaterial())
+
+    def getRoadMaterial(self):
+        material = Material()
+        material.setShininess(1.0)
+        material.setAmbient((0.5, 0, 1, 0.2))
+        material.setEmission((0.5,0,1,0.2))
+        material.setTwoside(True)
+
+        return material
 
 def vectorRatio(v1, v2):
     def zerodiv(x,y):
@@ -58,9 +145,11 @@ class CarController():
         self.acceleration_damping = 0.1
         self.last_is_going_forward = True
 
-        roadBuilder = RoadBuilder(render.find("scene.dae").find("Scene").find("portal"))
-        self.setPathModel(render.find("scene.dae").find("Scene").find("road_path")
-                          .get_node(0).getGeom(0), roadBuilder)
+        roadBuilder = RoadBuilder()
+        model = render.find("scene.dae").find("Scene").find("road_path")
+        model.hide()
+        self.setPathModel(model.get_node(0).getGeom(0), roadBuilder)
+        roadBuilder.finish()
 
 
     def brake(self, dt):
@@ -75,6 +164,7 @@ class CarController():
         car_right_vec = self.model.getNetTransform().get_mat().xformVec(Vec3(1,0,0))
 
     def setPathModel(self, geom, roadBuilder):
+        # TODO: make this outside of this class to use for many cars
         # Credit: Most code in this function comes from panda3d's docs
         self.road_segments = []
 
@@ -87,10 +177,15 @@ class CarController():
         def processPrimitive(prim, vdata):
             vertex = GeomVertexReader(vdata, 'vertex')
             prim = prim.decompose()
+
+
             for p in range(prim.getNumPrimitives()):
                 s = prim.getPrimitiveStart(p)
                 e = prim.getPrimitiveEnd(p)
                 last  = None
+
+                roadBuilder.addPrim()
+
                 for i in range(s, e):
                     vi = prim.getVertex(i)
                     vertex.setRow(vi)
@@ -253,6 +348,7 @@ class MyApp(ShowBase):
     def addLights(self):
         dlight = DirectionalLight('global_dlight')
         dlnp = render.attachNewNode(dlight)
+        dlnp.setPos(Vec3(0,100,0))
         render.setLight(dlnp)
 
         dlight = DirectionalLight('camera_dlight')
@@ -318,6 +414,7 @@ class MyApp(ShowBase):
         self.keys = dict()
         self.addNewListenedKey('w')            # Forward
         self.addNewListenedKey('s')            # Backward
+        self.addNewListenedKey('shift')        # Boost
         self.addNewListenedKey('q')            # Up
         self.addNewListenedKey('e')            # Down
         self.addNewListenedKey('space')        # Slow down
@@ -341,7 +438,10 @@ class MyApp(ShowBase):
         dt = task.time - self.last_update_car_time
 
         if self.keys['w']:
-            self.car_controller.acceleration += self.car_controller.direction.normalized() * 1.2 * dt
+            gaz = 1.2
+            if self.keys['shift']:
+                gaz *= 1.0 + self.car_controller.velocity.length()
+            self.car_controller.acceleration += self.car_controller.direction.normalized() * gaz * dt
             self.is_backing_up = False
         elif self.keys['s']:
             self.car_controller.acceleration -= self.car_controller.direction.normalized() * 0.5 * dt
