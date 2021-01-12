@@ -24,10 +24,14 @@ from panda3d.core import CullFaceAttrib
 from panda3d.core import ColorBlendAttrib
 
 DEBUG_VECTOR_HIDE=True
-ROAD_POS_STRENGTH=20
-ROAD_POS_STRENGTH_SIDEWAYS=4
+ROAD_POS_STRENGTH=15
+ROAD_POS_STRENGTH_DIVISOR_INSIDE_ROAD=2.0
+BLEND_VELOCITY_FAC_TOWARDS_ROAD=4
 ALIGN_STRENGTH=4.0
 HALF_ROAD_WIDTH=3
+
+ROAD_SELECTION_THRESHOLD=HALF_ROAD_WIDTH*3
+ROAD_SELECTION_FORCE=3
 
 def move_debug_vector_to(position, look_at):
     vector = render.find("scene.dae").find("Scene").find("debug_vector")
@@ -75,6 +79,11 @@ class RoadBuilder():
             self.lru_vertices = self.lru_vertices[0:CACHE_SIZE]
 
         return point
+
+
+    def updateTask(self, dt):
+        self.nodepath.setShaderInput("time", (globalClock.getFrameTime()))
+        return Task.cont
 
     def addSegment(self, p0, p1):
 
@@ -142,6 +151,8 @@ class RoadBuilder():
         nodepath.setAttrib(CullFaceAttrib.make(CullFaceAttrib.MCullNone))
         nodepath.setDepthWrite(False)
         nodepath.setAttrib(ColorBlendAttrib.make(ColorBlendAttrib.MAdd))
+        self.nodepath = nodepath
+        taskMgr.add(self.updateTask, "updateTask")
 
         self.lru_vertices = []
 
@@ -171,13 +182,13 @@ class CarController():
         self.velocity_damping = 0.99
         self.acceleration_damping = 0.1
         self.last_is_going_forward = True
+        self.has_road_possibilities = False
 
         roadBuilder = RoadBuilder()
         model = render.find("scene.dae").find("Scene").find("road_path")
         model.hide()
         self.setPathModel(model.get_node(0).getGeom(0), roadBuilder)
         roadBuilder.finish()
-
 
     def brake(self, dt):
         self.acceleration *= 0.94 * (dt * 60)
@@ -268,21 +279,11 @@ class CarController():
 
         Len = path.length()
 
-        if Len > 30:
+        if Len > HALF_ROAD_WIDTH * 1.5:
             return
 
-        # Go closer to road
-        pos_strength = dt / (Len if Len > 1.0 else 1.0)
-
-        getVec = render.getRelativeVector
-
-        pathUp   = path.project(getVec(self.model,Vec3(0,1,0)))
-        pathSide = path.project(getVec(self.model,Vec3(1,0,0)))
-        pathZ    = path.project(getVec(self.model,Vec3(0,0,1)))
-
-        path = pathUp + pathSide * ROAD_POS_STRENGTH_SIDEWAYS + pathZ
-
-        self.model.setPos(modelPos - path * pos_strength * ROAD_POS_STRENGTH)
+        if Len < 0.2:
+            Len = 0.2
 
         delta = 100.0
         vec = (p1 - p0).normalized()
@@ -302,6 +303,23 @@ class CarController():
         if not quat.almostSameDirection(originalQuat, 0.5):
             return
 
+        if Len < HALF_ROAD_WIDTH:
+            self.is_in_road = True
+
+        # Make car go more towards the selected path at intersection
+        angleSimilarityFactor = abs(self.direction.normalized().dot(vec.normalized()))
+
+        # Go closer to road
+        pos_strength = dt * angleSimilarityFactor
+        pos_strength /= ((Len * Len) if
+                         (Len > HALF_ROAD_WIDTH) else
+                         ROAD_POS_STRENGTH_DIVISOR_INSIDE_ROAD)
+
+        pos_strength *= ROAD_POS_STRENGTH
+        pos_strength = sorted([0,pos_strength,1])[1]
+
+        self.model.setPos(modelPos - path * pos_strength)
+
         strength = ALIGN_STRENGTH * dt / ((Len * Len) if Len > 1 else 1)
         strength = sorted([0, strength, 1])[1]
         self.car_shadow.setPos(self.model.getPos())
@@ -311,6 +329,10 @@ class CarController():
         self.model.setQuat(originalQuat)
         currentHpr = self.model.getHpr(self.car_shadow)
         self.model.setHpr(self.car_shadow, targetHpr * strength + currentHpr * (1.0 - strength))
+
+        # Put velocity in direction of road
+        blend_velocity = BLEND_VELOCITY_FAC_TOWARDS_ROAD * dt
+        self.velocity = self.velocity.project(vec) * (blend_velocity) + self.velocity * (1.0 - blend_velocity)
 
         move_debug_vector_to(p0, p1)
 
@@ -325,9 +347,15 @@ class CarController():
 
         closestFields = sorted(forceFieldsPaths,key=lambda x: x[0])[0:5]
 
+        road_possibilities = 0
+
         for field in closestFields:
             (Len, path, segment0, segment1) = field
             self.alignCarTowardsForceField(dt, segment0, segment1)
+            if Len < ROAD_SELECTION_THRESHOLD:
+                road_possibilities += 1
+
+        self.has_road_possibilities = road_possibilities > 1
 
 
     def updatePos(self, dt):
@@ -343,10 +371,6 @@ class CarController():
         self.acceleration *= self.acceleration_damping * (dt * 60)
         self.angular_velocity *= self.angular_velocity_damping * (dt * 60)
         self.absolute_angular_velocity *= self.angular_velocity_damping * (dt * 60)
-
-        # This is nice at low speed but annoying at high speeds
-        blend_velocity = 0.2 * (dt*30)
-        self.velocity = self.velocity.project(self.direction) * (1.0 - blend_velocity) + self.velocity * blend_velocity
 
         self.alignCarTowardsForceFields(dt)
 
@@ -500,10 +524,18 @@ class MyApp(ShowBase):
             self.car_controller.angular_velocity += Vec3(0.0,1.50,0) * dt
 
         if self.keys[TURN_LEFT_KEY]:
-            self.car_controller.angular_velocity += Vec3(0.0,0.0,-2.00) * dt
-        if self.keys[TURN_RIGHT_KEY]:
-            self.car_controller.angular_velocity += Vec3(0.0,0.0,2.00) * dt
+            if self.car_controller.has_road_possibilities:
+                left = render.getRelativeVector(self.car_controller.model, Vec3(-1.0, 0, 0))
+                self.car_controller.velocity += left * dt * ROAD_SELECTION_FORCE
+            else:
+                self.car_controller.angular_velocity += Vec3(0.0,0.0,-2.0) * dt
 
+        if self.keys[TURN_RIGHT_KEY]:
+            if self.car_controller.has_road_possibilities:
+                right = render.getRelativeVector(self.car_controller.model, Vec3(1, 0, 0))
+                self.car_controller.velocity += right * dt * ROAD_SELECTION_FORCE
+            else:
+                self.car_controller.angular_velocity += Vec3(0.0,0.0,2.0) * dt
 
         if self.keys[ROLL_LEFT_KEY] or self.keys[ROLL_RIGHT_KEY]:
             factor = 4.0 * dt

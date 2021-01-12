@@ -1,5 +1,7 @@
 #version 130
 
+uniform float time;
+
 // Input from vertex shader
 in vec2 texcoord;
 in vec4 screen_position;
@@ -22,8 +24,7 @@ void main() {
   color = clamp(color, 0.0 ,1.0);
   color.a *= 0.9;
 
-
-  float distance = clamp(screen_position.z/4000.0, 0.0, 1.0);
+  float distance = clamp(screen_position.z/2000.0, 0.0, 1.0);
   color *= 1.0 - distance;
 
   color = clamp(color, 0.0, 1.0);
@@ -31,6 +32,7 @@ void main() {
   color += 0.2*clamp(distance/2.0 * vec4(1.0, 0.9, 0.8, 0.3), 0.0, 1.0);
   color += vec4(0.0,0.0,0.0,0.1);
   color *= 0.1;
+
 
   gl_FragColor = color.rgba;
 }
