@@ -18,8 +18,8 @@ from panda3d.core import Vec3
 from panda3d.core import Vec4
 from panda3d.core import lookAt
 from panda3d.core import Quat
-from panda3d.core import Material
 from panda3d.core import Plane
+from panda3d.core import Shader
 
 def move_debug_vector_to(position, look_at):
     vector = render.find("scene.dae").find("Scene").find("debug_vector")
@@ -106,18 +106,11 @@ class RoadBuilder():
         self.road_visual_nodePath = render.attachNewNode(visnode)
         nodepath = self.road_visual_nodePath
         nodepath.setTwoSided(True)
+        nodepath.setShader(Shader.load(Shader.SL_GLSL,
+                                       vertex="shaders/road.vert",
+                                       fragment="shaders/road.frag"))
         nodepath.setTransparency(True)
-        nodepath.setAlphaScale(0.5)
-        nodepath.setMaterial(self.getRoadMaterial())
 
-    def getRoadMaterial(self):
-        material = Material()
-        material.setShininess(1.0)
-        material.setAmbient((0.5, 0, 1, 0.2))
-        material.setEmission((0.5,0,1,0.2))
-        material.setTwoside(True)
-
-        return material
 
 def vectorRatio(v1, v2):
     def zerodiv(x,y):
