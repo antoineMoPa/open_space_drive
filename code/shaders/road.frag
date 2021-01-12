@@ -14,14 +14,23 @@ void main() {
   edges /= size;
   edges = 1.0 - abs(edges - 0.0);
   edges = clamp(edges, 0.0, 1.0);
-  //edges = max(edges, 0.0);
-  color += 1.2 * pow(edges, 2.0) * edges * vec4(2.0,1.0,1.0,1.0);
-  color += 1.0 * pow(edges, 2.0) * vec4(1.0,0.0,0.0,1.0);
+  float neon = 1.5 * pow(edges, 5.0);
+  float halo = 1.2 * pow(edges, 3.0) - 1.0*neon;
+  color += neon * vec4(2.0,0.0,0.0,1.0);
+  color += halo * vec4(0.9,0.5,0.7,1.0);
 
   color = clamp(color, 0.0 ,1.0);
   color.a *= 0.9;
 
-  color *= 1.0 - screen_position.z/300.0;
+
+  float distance = clamp(screen_position.z/4000.0, 0.0, 1.0);
+  color *= 1.0 - distance;
+
+  color = clamp(color, 0.0, 1.0);
+
+  color += 0.2*clamp(distance/2.0 * vec4(1.0, 0.9, 0.8, 0.3), 0.0, 1.0);
+  color += vec4(0.0,0.0,0.0,0.1);
+  color *= 0.1;
 
   gl_FragColor = color.rgba;
 }

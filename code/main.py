@@ -20,9 +20,19 @@ from panda3d.core import lookAt
 from panda3d.core import Quat
 from panda3d.core import Plane
 from panda3d.core import Shader
+from panda3d.core import CullFaceAttrib
+from panda3d.core import ColorBlendAttrib
+
+DEBUG_VECTOR_HIDE=True
+ROAD_POS_STRENGTH=20
+ROAD_POS_STRENGTH_SIDEWAYS=4
+ALIGN_STRENGTH=4.0
+HALF_ROAD_WIDTH=3
 
 def move_debug_vector_to(position, look_at):
     vector = render.find("scene.dae").find("Scene").find("debug_vector")
+    if DEBUG_VECTOR_HIDE:
+        vector.hide()
     vector.setPos(position)
     vector.lookAt(look_at)
 
@@ -41,6 +51,8 @@ class RoadBuilder():
         self.lastv = 0
         self.vertices = []
 
+        self.lru_vertices = []
+
     def addPrim(self):
         if self.prim is not None:
             for vertex in self.vertices:
@@ -50,14 +62,26 @@ class RoadBuilder():
 
         self.prim = GeomTriangles(Geom.UHStatic)
 
+    def snapToExisting(self, point, tolerance=0.1):
+        CACHE_SIZE=1024
+
+        for i in self.lru_vertices:
+            if (point - i).length() < tolerance:
+                return i
+
+        self.lru_vertices.append(point)
+
+        if len(self.lru_vertices) > CACHE_SIZE:
+            self.lru_vertices = self.lru_vertices[0:CACHE_SIZE]
+
+        return point
+
     def addSegment(self, p0, p1):
 
-        width = 10
-
-        overlap = 1.02
+        width = HALF_ROAD_WIDTH
 
         side = -(p1 - p0).cross(Vec3().up()).normalized() * width
-        length = (p1 - p0) * overlap
+        length = (p1 - p0)
 
         h = (p1 - p0).length()
 
@@ -70,6 +94,11 @@ class RoadBuilder():
         v2 += p0
         v3 += p0
         v4 += p0
+
+        v1 = self.snapToExisting(v1)
+        v2 = self.snapToExisting(v2)
+        v3 = self.snapToExisting(v3)
+        v4 = self.snapToExisting(v4)
 
         self.vertex.addData3(v1)
         self.texcoord.addData2(1, 0)
@@ -110,6 +139,11 @@ class RoadBuilder():
                                        vertex="shaders/road.vert",
                                        fragment="shaders/road.frag"))
         nodepath.setTransparency(True)
+        nodepath.setAttrib(CullFaceAttrib.make(CullFaceAttrib.MCullNone))
+        nodepath.setDepthWrite(False)
+        nodepath.setAttrib(ColorBlendAttrib.make(ColorBlendAttrib.MAdd))
+
+        self.lru_vertices = []
 
 
 def vectorRatio(v1, v2):
@@ -238,8 +272,17 @@ class CarController():
             return
 
         # Go closer to road
-        pos_strength = 8.0 * dt / (Len if Len > 0.1 else 0.1)
-        self.model.setPos(modelPos - path * pos_strength)
+        pos_strength = dt / (Len if Len > 1.0 else 1.0)
+
+        getVec = render.getRelativeVector
+
+        pathUp   = path.project(getVec(self.model,Vec3(0,1,0)))
+        pathSide = path.project(getVec(self.model,Vec3(1,0,0)))
+        pathZ    = path.project(getVec(self.model,Vec3(0,0,1)))
+
+        path = pathUp + pathSide * ROAD_POS_STRENGTH_SIDEWAYS + pathZ
+
+        self.model.setPos(modelPos - path * pos_strength * ROAD_POS_STRENGTH)
 
         delta = 100.0
         vec = (p1 - p0).normalized()
@@ -259,7 +302,7 @@ class CarController():
         if not quat.almostSameDirection(originalQuat, 0.5):
             return
 
-        strength = 10 * dt / ((Len * Len) if Len > 1 else 1)
+        strength = ALIGN_STRENGTH * dt / ((Len * Len) if Len > 1 else 1)
         strength = sorted([0, strength, 1])[1]
         self.car_shadow.setPos(self.model.getPos())
         self.car_shadow.setHpr(self.model.getHpr())
@@ -301,6 +344,7 @@ class CarController():
         self.angular_velocity *= self.angular_velocity_damping * (dt * 60)
         self.absolute_angular_velocity *= self.angular_velocity_damping * (dt * 60)
 
+        # This is nice at low speed but annoying at high speeds
         blend_velocity = 0.2 * (dt*30)
         self.velocity = self.velocity.project(self.direction) * (1.0 - blend_velocity) + self.velocity * blend_velocity
 
