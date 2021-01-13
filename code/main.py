@@ -24,14 +24,12 @@ from panda3d.core import CullFaceAttrib
 from panda3d.core import ColorBlendAttrib
 
 DEBUG_VECTOR_HIDE=True
-ROAD_POS_STRENGTH=15
-ROAD_POS_STRENGTH_DIVISOR_INSIDE_ROAD=2.0
-BLEND_VELOCITY_FAC_TOWARDS_ROAD=4
-ALIGN_STRENGTH=4.0
+ROAD_POS_STRENGTH=30
+BLEND_VELOCITY_FAC_TOWARDS_ROAD=0.3
+ALIGN_STRENGTH=4
 HALF_ROAD_WIDTH=3
 
-ROAD_SELECTION_THRESHOLD=HALF_ROAD_WIDTH*3
-ROAD_SELECTION_FORCE=3
+ALIGN_VELOCITY_WITH_DIRECTION_FACTOR=2
 
 def move_debug_vector_to(position, look_at):
     vector = render.find("scene.dae").find("Scene").find("debug_vector")
@@ -275,12 +273,12 @@ class CarController():
         path = self.pointSegmentShortestPath(modelPos, p1, p0, bounds=True, boundsNone=True)
 
         if path is None:
-            return
+            return None
 
         Len = path.length()
 
         if Len > HALF_ROAD_WIDTH * 1.5:
-            return
+            return None
 
         if Len < 0.2:
             Len = 0.2
@@ -301,24 +299,19 @@ class CarController():
             quat = other_quat
 
         if not quat.almostSameDirection(originalQuat, 0.5):
-            return
-
-        if Len < HALF_ROAD_WIDTH:
-            self.is_in_road = True
+            return None
 
         # Make car go more towards the selected path at intersection
-        angleSimilarityFactor = abs(self.direction.normalized().dot(vec.normalized()))
+        angleSimilarityFactor = abs(self.direction.normalized().dot(vec.normalized()) + path.length())
 
         # Go closer to road
         pos_strength = dt * angleSimilarityFactor
-        pos_strength /= ((Len * Len) if
-                         (Len > HALF_ROAD_WIDTH) else
-                         ROAD_POS_STRENGTH_DIVISOR_INSIDE_ROAD)
+        pos_strength /= (Len * Len) if Len > 1.0 else 1.0
 
         pos_strength *= ROAD_POS_STRENGTH
         pos_strength = sorted([0,pos_strength,1])[1]
 
-        self.model.setPos(modelPos - path * pos_strength)
+        position = modelPos - path * pos_strength
 
         strength = ALIGN_STRENGTH * dt / ((Len * Len) if Len > 1 else 1)
         strength = sorted([0, strength, 1])[1]
@@ -329,33 +322,47 @@ class CarController():
         self.model.setQuat(originalQuat)
         currentHpr = self.model.getHpr(self.car_shadow)
         self.model.setHpr(self.car_shadow, targetHpr * strength + currentHpr * (1.0 - strength))
+        quat = self.model.getQuat()
 
         # Put velocity in direction of road
         blend_velocity = BLEND_VELOCITY_FAC_TOWARDS_ROAD * dt
-        self.velocity = self.velocity.project(vec) * (blend_velocity) + self.velocity * (1.0 - blend_velocity)
+        velocity = self.velocity.project(vec) * (blend_velocity) + self.velocity * (1.0 - blend_velocity)
 
-        move_debug_vector_to(p0, p1)
+        self.model.setPos(position)
+        self.model.setQuat(quat)
+        self.velocity = velocity
 
     def alignCarTowardsForceFields(self, dt):
         forceFieldsPaths = []
         modelPos = self.model.getPos()
+        modelQuat = self.model.getQuat()
+
         for segment in self.road_segments:
             path = self.pointSegmentShortestPath(modelPos, segment[0], segment[1], bounds=True)
             if path is not None:
                 Len = path.length()
                 forceFieldsPaths.append((Len, path, segment[0], segment[1]))
 
-        closestFields = sorted(forceFieldsPaths,key=lambda x: x[0])[0:5]
+        def sortRoadsWithDirection(road):
+            """
+            Find the road that is the most pointed by current direction
+            """
+            _path = self.pointSegmentShortestPath(modelPos + self.direction * 30.0,
+                                                 road[2], road[3], bounds=False)
 
-        road_possibilities = 0
+            return _path.length() - _path.project(self.direction).length()
 
-        for field in closestFields:
-            (Len, path, segment0, segment1) = field
-            self.alignCarTowardsForceField(dt, segment0, segment1)
-            if Len < ROAD_SELECTION_THRESHOLD:
-                road_possibilities += 1
+        closestFields = sorted(forceFieldsPaths,key=lambda x: x[0])[0:2]
 
-        self.has_road_possibilities = road_possibilities > 1
+        if len(closestFields) >= 2 and\
+           closestFields[0][0] < HALF_ROAD_WIDTH * 3 and \
+           closestFields[1][0] < HALF_ROAD_WIDTH * 3:
+            closestFields = sorted(closestFields,key=sortRoadsWithDirection)[0:2]
+
+        if len(closestFields) == 0 or closestFields[0] is None:
+            return
+
+        self.alignCarTowardsForceField(dt, closestFields[0][2], closestFields[0][3])
 
 
     def updatePos(self, dt):
@@ -376,7 +383,8 @@ class CarController():
 
         self.direction = self.model.getNetTransform().get_mat().getRow3(1)
 
-
+        blend_velocity = ALIGN_VELOCITY_WITH_DIRECTION_FACTOR * dt
+        self.velocity = self.velocity.project(self.direction) * (blend_velocity) + self.velocity * (1.0 - blend_velocity)
 
 class MyApp(ShowBase):
     def __init__(self):
@@ -405,6 +413,14 @@ class MyApp(ShowBase):
         self.is_backing_up = False
 
         self.bindKeys()
+        self.initFloor()
+
+    def initFloor(self):
+        nodePath = render.find("scene.dae").find("Scene").find("Floor")
+        nodePath.setShader(Shader.load(Shader.SL_GLSL,
+                                       vertex="shaders/floor.vert",
+                                       fragment="shaders/floor.frag"))
+
 
     def addLights(self):
         dlight = DirectionalLight('global_dlight')
@@ -450,11 +466,11 @@ class MyApp(ShowBase):
 
 
         # prevent smooth for now
-        self.camera.setHpr(self.car.getHpr())
-        self.dlightnp.setPos(self.camera.getPos())
-        self.dlightnp.headsUp(self.car)
-        self.last_update_camera_time = task.time
-        return Task.cont
+        #self.camera.setHpr(self.car.getHpr())
+        #self.dlightnp.setPos(self.camera.getPos())
+        #self.dlightnp.headsUp(self.car)
+        #self.last_update_camera_time = task.time
+        #return Task.cont
 
         #self.camera.setPos(self.car, Vec3(0.0,-25.0,0.0))
         target_cam_pos = self.camera.getPos()
@@ -524,18 +540,9 @@ class MyApp(ShowBase):
             self.car_controller.angular_velocity += Vec3(0.0,1.50,0) * dt
 
         if self.keys[TURN_LEFT_KEY]:
-            if self.car_controller.has_road_possibilities:
-                left = render.getRelativeVector(self.car_controller.model, Vec3(-1.0, 0, 0))
-                self.car_controller.velocity += left * dt * ROAD_SELECTION_FORCE
-            else:
-                self.car_controller.angular_velocity += Vec3(0.0,0.0,-2.0) * dt
-
-        if self.keys[TURN_RIGHT_KEY]:
-            if self.car_controller.has_road_possibilities:
-                right = render.getRelativeVector(self.car_controller.model, Vec3(1, 0, 0))
-                self.car_controller.velocity += right * dt * ROAD_SELECTION_FORCE
-            else:
-                self.car_controller.angular_velocity += Vec3(0.0,0.0,2.0) * dt
+            self.car_controller.angular_velocity += Vec3(0.0,0.0,-2.0) * dt
+        elif self.keys[TURN_RIGHT_KEY]:
+            self.car_controller.angular_velocity += Vec3(0.0,0.0,2.0) * dt
 
         if self.keys[ROLL_LEFT_KEY] or self.keys[ROLL_RIGHT_KEY]:
             factor = 4.0 * dt
@@ -553,6 +560,7 @@ class MyApp(ShowBase):
         self.last_update_car_time = task.time
 
         self.car_controller.updatePos(dt)
+
         return Task.cont
 
 
