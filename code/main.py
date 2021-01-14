@@ -26,7 +26,7 @@ from panda3d.core import ColorBlendAttrib
 HIDE_DEBUG_VECTOR=True
 ROAD_POS_STRENGTH=30
 BLEND_VELOCITY_FAC_TOWARDS_ROAD=0.3
-ALIGN_STRENGTH=4
+ALIGN_STRENGTH=6
 HALF_ROAD_WIDTH=3
 
 ALIGN_VELOCITY_WITH_DIRECTION_FACTOR=2
@@ -213,13 +213,13 @@ class RoadInfo():
                         roadBuilder.addSegment(last, v)
                     last = v
 
-
         processGeom(geom)
-
 
 class CarController():
     def __init__(self, model):
         self.car_shadow = NodePath('car_shadow') # Nodepath used for calculations only
+                                                 # Maybe this could just be a vector (position)
+                                                 # and a quaternion? (orientation)
         self.model = model
         self.acceleration = Vec3(0,0,0)
         self.velocity = Vec3(0,0,0)
@@ -235,18 +235,11 @@ class CarController():
 
         self.roadInfo = RoadInfoSingleton.get()
 
-    def brake(self, dt):
-        self.acceleration *= 0.94 * (dt * 60)
-        self.velocity *= 0.94 * (dt * 60)
-        self.angular_velocity *= 0.94 * (dt * 60)
-
     def upVector(self):
         return self.model.getNetTransform().get_mat().xformVec(Vec3(0,0,1))
 
     def rightVector(self):
         car_right_vec = self.model.getNetTransform().get_mat().xformVec(Vec3(1,0,0))
-
-
 
     def pointSegmentShortestPath(self, Point, segmentP0, segmentP1, bounds=True, boundsNone=False):
         """
@@ -280,6 +273,7 @@ class CarController():
             return Point - segmentP1
 
         return -(Projection - P)
+
 
     def alignCarTowardsForceField(self, dt, p0, p1):
         modelPos = self.model.getPos()
@@ -399,6 +393,17 @@ class CarController():
         blend_velocity = ALIGN_VELOCITY_WITH_DIRECTION_FACTOR * dt
         self.velocity = self.velocity.project(self.direction) * (blend_velocity) + self.velocity * (1.0 - blend_velocity)
 
+
+class PlayerCarController(CarController):
+    def __init__(self, model):
+        CarController.__init__(self,model)
+
+    def brake(self, dt):
+        self.acceleration *= 0.94 * (dt * 60)
+        self.velocity *= 0.94 * (dt * 60)
+        self.angular_velocity *= 0.94 * (dt * 60)
+
+
 class MyApp(ShowBase):
     def __init__(self):
         ShowBase.__init__(self)
@@ -421,7 +426,7 @@ class MyApp(ShowBase):
 
         self.car = dae.find("Scene").find("player_car")
 
-        self.car_controller = CarController(self.car)
+        self.player_car_controller = PlayerCarController(self.car)
 
         self.last_update_car_time = None
         self.last_update_camera_time = None
@@ -478,7 +483,7 @@ class MyApp(ShowBase):
 
         dt = task.time - self.last_update_camera_time
 
-        car_dir = self.car_controller.direction
+        car_dir = self.player_car_controller.direction
 
         current_cam_pos = self.last_cam_pos
         self.camera.setPos(self.car, Vec3(0.0,-25.0,4.0))
@@ -536,32 +541,32 @@ class MyApp(ShowBase):
         if self.keys['w']:
             gaz = 1.2
             if self.keys['shift']:
-                gaz *= 1.0 + self.car_controller.velocity.length()
-            self.car_controller.acceleration += self.car_controller.direction.normalized() * gaz * dt
+                gaz *= 1.0 + self.player_car_controller.velocity.length()
+            self.player_car_controller.acceleration += self.player_car_controller.direction.normalized() * gaz * dt
             self.is_backing_up = False
         elif self.keys['s']:
-            self.car_controller.acceleration -= self.car_controller.direction.normalized() * 0.5 * dt
-            if self.car_controller.velocity.length() < 0.4:
+            self.player_car_controller.acceleration -= self.player_car_controller.direction.normalized() * 0.5 * dt
+            if self.player_car_controller.velocity.length() < 0.4:
                 self.is_backing_up = True
         elif self.keys['space']:
-            self.car_controller.brake(dt)
+            self.player_car_controller.brake(dt)
 
         if self.keys['q']:
-            self.car_controller.acceleration += self.car_controller.upVector() * 3.2 * dt
+            self.player_car_controller.acceleration += self.player_car_controller.upVector() * 3.2 * dt
         if self.keys['e']:
-            self.car_controller.acceleration -= self.car_controller.upVector() * 3.2 * dt
+            self.player_car_controller.acceleration -= self.player_car_controller.upVector() * 3.2 * dt
 
         carRotateMatrix = self.car.get_mat().rotateMat(0,axis=1)
 
         if self.keys['arrow_up']:
-            self.car_controller.angular_velocity += Vec3(0.0,-1.50,0) * dt
+            self.player_car_controller.angular_velocity += Vec3(0.0,-1.50,0) * dt
         if self.keys['arrow_down']:
-            self.car_controller.angular_velocity += Vec3(0.0,1.50,0) * dt
+            self.player_car_controller.angular_velocity += Vec3(0.0,1.50,0) * dt
 
         if self.keys[TURN_LEFT_KEY]:
-            self.car_controller.angular_velocity += Vec3(0.0,0.0,-2.0) * dt
+            self.player_car_controller.angular_velocity += Vec3(0.0,0.0,-2.0) * dt
         elif self.keys[TURN_RIGHT_KEY]:
-            self.car_controller.angular_velocity += Vec3(0.0,0.0,2.0) * dt
+            self.player_car_controller.angular_velocity += Vec3(0.0,0.0,2.0) * dt
 
         if self.keys[ROLL_LEFT_KEY] or self.keys[ROLL_RIGHT_KEY]:
             factor = 4.0 * dt
@@ -569,16 +574,11 @@ class MyApp(ShowBase):
             if self.keys[ROLL_RIGHT_KEY]:
                 factor *= -1
 
-            #if self.is_backing_up:
-            #    factor *= -1
-            #    factor *= 2.0
-
-            # Main rotation axis
-            self.car_controller.angular_velocity += Vec3(factor,0.0,0.0)
+            self.player_car_controller.angular_velocity += Vec3(factor,0.0,0.0)
 
         self.last_update_car_time = task.time
 
-        self.car_controller.updatePos(dt)
+        self.player_car_controller.updatePos(dt)
 
         return Task.cont
 
