@@ -162,43 +162,28 @@ def vectorRatio(v1, v2):
 
     return sorted([a,b,c], key=lambda x: abs(x))[-1]
 
+class RoadInfoSingleton():
+    def __init__(self):
+        self.roadInfo = None
 
-class CarController():
-    def __init__(self, model):
-        self.car_shadow = NodePath('car_shadow') # Nodepath used for calculations only
-        self.model = model
-        self.acceleration = Vec3(0,0,0)
-        self.velocity = Vec3(0,0,0)
-        self.direction = Vec3(0,-1,0)
-        self.angular_velocity = Vec3(0,0,0) # Heading Pitch Roll relative to car
-        self.absolute_angular_velocity = Vec3(0,0,0) # Same, relative to world
+    @classmethod
+    def set(self, roadInfo):
+        self.roadInfo = roadInfo
 
-        self.angular_velocity_damping = 0.97
-        self.velocity_damping = 0.99
-        self.acceleration_damping = 0.1
-        self.last_is_going_forward = True
-        self.has_road_possibilities = False
+    @classmethod
+    def get(self):
+        return self.roadInfo
 
+class RoadInfo():
+    def __init__(self):
         roadBuilder = RoadBuilder()
         model = render.find("scene.dae").find("Scene").find("road_path")
         model.hide()
         self.setPathModel(model.get_node(0).getGeom(0), roadBuilder)
         roadBuilder.finish()
 
-    def brake(self, dt):
-        self.acceleration *= 0.94 * (dt * 60)
-        self.velocity *= 0.94 * (dt * 60)
-        self.angular_velocity *= 0.94 * (dt * 60)
-
-    def upVector(self):
-        return self.model.getNetTransform().get_mat().xformVec(Vec3(0,0,1))
-
-    def rightVector(self):
-        car_right_vec = self.model.getNetTransform().get_mat().xformVec(Vec3(1,0,0))
-
     def setPathModel(self, geom, roadBuilder):
-        # TODO: make this outside of this class to use for many cars
-        # Credit: Most code in this function comes from panda3d's docs
+        # Credits: Most code in this function comes from panda3d's docs
         self.road_segments = []
 
         def processGeom(geom):
@@ -230,6 +215,37 @@ class CarController():
 
 
         processGeom(geom)
+
+
+class CarController():
+    def __init__(self, model):
+        self.car_shadow = NodePath('car_shadow') # Nodepath used for calculations only
+        self.model = model
+        self.acceleration = Vec3(0,0,0)
+        self.velocity = Vec3(0,0,0)
+        self.direction = Vec3(0,-1,0)
+        self.angular_velocity = Vec3(0,0,0) # Heading Pitch Roll relative to car
+        self.absolute_angular_velocity = Vec3(0,0,0) # Same, relative to world
+
+        self.angular_velocity_damping = 0.97
+        self.velocity_damping = 0.99
+        self.acceleration_damping = 0.1
+        self.last_is_going_forward = True
+        self.has_road_possibilities = False
+
+        self.roadInfo = RoadInfoSingleton.get()
+
+    def brake(self, dt):
+        self.acceleration *= 0.94 * (dt * 60)
+        self.velocity *= 0.94 * (dt * 60)
+        self.angular_velocity *= 0.94 * (dt * 60)
+
+    def upVector(self):
+        return self.model.getNetTransform().get_mat().xformVec(Vec3(0,0,1))
+
+    def rightVector(self):
+        car_right_vec = self.model.getNetTransform().get_mat().xformVec(Vec3(1,0,0))
+
 
 
     def pointSegmentShortestPath(self, Point, segmentP0, segmentP1, bounds=True, boundsNone=False):
@@ -334,7 +350,7 @@ class CarController():
         modelPos = self.model.getPos()
         modelQuat = self.model.getQuat()
 
-        for segment in self.road_segments:
+        for segment in self.roadInfo.road_segments:
             path = self.pointSegmentShortestPath(modelPos, segment[0], segment[1], bounds=True)
             if path is not None:
                 Len = path.length()
@@ -400,6 +416,8 @@ class MyApp(ShowBase):
 
         render.setShaderAuto()
         base.setBackgroundColor(0.0,0.0,0.1)
+
+        RoadInfoSingleton.set(RoadInfo())
 
         self.car = dae.find("Scene").find("player_car")
 
