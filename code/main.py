@@ -23,7 +23,7 @@ from panda3d.core import Shader
 from panda3d.core import CullFaceAttrib
 from panda3d.core import ColorBlendAttrib
 
-DEBUG_VECTOR_HIDE=True
+HIDE_DEBUG_VECTOR=True
 ROAD_POS_STRENGTH=30
 BLEND_VELOCITY_FAC_TOWARDS_ROAD=0.3
 ALIGN_STRENGTH=4
@@ -33,8 +33,6 @@ ALIGN_VELOCITY_WITH_DIRECTION_FACTOR=2
 
 def move_debug_vector_to(position, look_at):
     vector = render.find("scene.dae").find("Scene").find("debug_vector")
-    if DEBUG_VECTOR_HIDE:
-        vector.hide()
     vector.setPos(position)
     vector.lookAt(look_at)
 
@@ -153,7 +151,6 @@ class RoadBuilder():
         taskMgr.add(self.updateTask, "updateTask")
 
         self.lru_vertices = []
-
 
 def vectorRatio(v1, v2):
     def zerodiv(x,y):
@@ -402,7 +399,7 @@ class MyApp(ShowBase):
         self.addLights()
 
         render.setShaderAuto()
-        base.setBackgroundColor(0.1,0.0,0.2)
+        base.setBackgroundColor(0.0,0.0,0.1)
 
         self.car = dae.find("Scene").find("player_car")
 
@@ -413,15 +410,19 @@ class MyApp(ShowBase):
         self.is_backing_up = False
 
         self.bindKeys()
-        self.initFloor()
+        self.initBuildings()
+        self.initDebugVector()
 
-    def initFloor(self):
-        nodePath = render.find("scene.dae").find("Scene").find("Floor")
+    def initDebugVector(self):
+        if HIDE_DEBUG_VECTOR:
+            vector = render.find("scene.dae").find("Scene").find("debug_vector")
+        vector.hide()
+
+    def initBuildings(self):
+        nodePath = render.find("scene.dae").find("Scene").find("Buildings")
         nodePath.setShader(Shader.load(Shader.SL_GLSL,
-                                       vertex="shaders/floor.vert",
-                                       fragment="shaders/floor.frag"))
-
-
+                                       vertex="shaders/buildings.vert",
+                                       fragment="shaders/buildings.frag"))
     def addLights(self):
         dlight = DirectionalLight('global_dlight')
         dlnp = render.attachNewNode(dlight)
