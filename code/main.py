@@ -1,5 +1,6 @@
 
 from math import pi, sin, cos, inf
+import random
 
 from direct.showbase.ShowBase import ShowBase
 from direct.task import Task
@@ -26,10 +27,13 @@ from panda3d.core import ColorBlendAttrib
 HIDE_DEBUG_VECTOR=True
 ROAD_POS_STRENGTH=30
 BLEND_VELOCITY_FAC_TOWARDS_ROAD=0.3
-ALIGN_STRENGTH=6
+ALIGN_STRENGTH=10
 HALF_ROAD_WIDTH=3
 
 ALIGN_VELOCITY_WITH_DIRECTION_FACTOR=2
+
+AI_CAR_QUANTITY=10
+AI_MAX_DISTANCE=400
 
 def move_debug_vector_to(position, look_at):
     vector = render.find("scene.dae").find("Scene").find("debug_vector")
@@ -230,8 +234,7 @@ class CarController():
         self.angular_velocity_damping = 0.97
         self.velocity_damping = 0.99
         self.acceleration_damping = 0.1
-        self.last_is_going_forward = True
-        self.has_road_possibilities = False
+        self.disable_road_force_field = False
 
         self.roadInfo = RoadInfoSingleton.get()
 
@@ -274,6 +277,17 @@ class CarController():
 
         return -(Projection - P)
 
+    def getCloseRoadSegment(self, Point):
+        shortest = (1e100, None, None)
+        for segment in self.roadInfo.road_segments:
+            Len0 = (segment[0] - Point).length()
+            Len1 = (segment[1] - Point).length()
+            if Len0 < shortest[0]:
+                shortest = (Len0, segment[0], segment[1])
+            if Len1 < shortest[0]:
+                shortest = (Len1, segment[0], segment[1])
+
+        return (shortest[1],shortest[2])
 
     def alignCarTowardsForceField(self, dt, p0, p1):
         modelPos = self.model.getPos()
@@ -283,9 +297,6 @@ class CarController():
             return None
 
         Len = path.length()
-
-        if Len > HALF_ROAD_WIDTH * 1.5:
-            return None
 
         if Len < 0.2:
             Len = 0.2
@@ -348,7 +359,8 @@ class CarController():
             path = self.pointSegmentShortestPath(modelPos, segment[0], segment[1], bounds=True)
             if path is not None:
                 Len = path.length()
-                forceFieldsPaths.append((Len, path, segment[0], segment[1]))
+                if Len < HALF_ROAD_WIDTH * 1.5:
+                    forceFieldsPaths.append((Len, path, segment[0], segment[1]))
 
         def sortRoadsWithDirection(road):
             """
@@ -369,10 +381,11 @@ class CarController():
         if len(closestFields) == 0 or closestFields[0] is None:
             return
 
-        self.alignCarTowardsForceField(dt, closestFields[0][2], closestFields[0][3])
+        if not self.disable_road_force_field:
+            self.alignCarTowardsForceField(dt, closestFields[0][2], closestFields[0][3])
 
 
-    def updatePos(self, dt):
+    def update(self, dt):
         self.velocity += self.acceleration * (dt * 60)
         self.model.setPos(self.model.getPos() + self.velocity * (dt * 60))
 
@@ -381,10 +394,10 @@ class CarController():
         self.model.setHpr(self.model, self.model.getHpr(self.model) + self.angular_velocity)
         self.model.setHpr(self.model.getHpr() + self.absolute_angular_velocity)
 
-        self.velocity *= self.velocity_damping * (dt * 60)
-        self.acceleration *= self.acceleration_damping * (dt * 60)
-        self.angular_velocity *= self.angular_velocity_damping * (dt * 60)
-        self.absolute_angular_velocity *= self.angular_velocity_damping * (dt * 60)
+        self.velocity *= pow(self.velocity_damping, dt * 60)
+        self.acceleration *= pow(self.acceleration_damping, dt * 60)
+        self.angular_velocity *= pow(self.angular_velocity_damping, dt * 60)
+        self.absolute_angular_velocity *= pow(self.angular_velocity_damping, dt * 60)
 
         self.alignCarTowardsForceFields(dt)
 
@@ -399,10 +412,54 @@ class PlayerCarController(CarController):
         CarController.__init__(self,model)
 
     def brake(self, dt):
-        self.acceleration *= 0.94 * (dt * 60)
-        self.velocity *= 0.94 * (dt * 60)
-        self.angular_velocity *= 0.94 * (dt * 60)
+        self.acceleration *= pow(0.94, dt * 60)
+        self.velocity *= pow(0.94, dt * 60)
+        self.angular_velocity *= pow(0.94, dt * 60)
 
+class AICarController(CarController):
+    def __init__(self, model):
+        CarController.__init__(self,model)
+        self.resetRandom()
+
+    def resetRandom(self, cameraPosition=Vec3(0.0)):
+        def r():
+            return random.uniform(0,1)
+
+        cameraPlusRandomPos = cameraPosition + ((Vec3(r(),r(),r())-0.5) * 40.0)
+        (segment0, segment1) = self.getCloseRoadSegment(cameraPlusRandomPos)
+
+        if segment0 is None:
+            segment0 = cameraPlusRandomPos
+            segment1 = cameraPlusRandomPos + Vec3(r())
+
+        self.model.setPos(segment1)
+        self.model.lookAt(segment0)
+        self.acceleration = Vec3(Vec3(r(),r(),r())*0.3)
+        self.angular_velocity = Vec3(0)
+
+    def update(self, dt, cameraPosition):
+        CarController.update(self, dt)
+        self.velocity += self.direction * 0.02
+
+        if (cameraPosition - self.model.getPos()).length() > AI_MAX_DISTANCE:
+            self.resetRandom(cameraPosition)
+
+class AIFleetController():
+    def __init__(self):
+        carModel = render.find("scene.dae").find("Scene").find("ai_car")
+
+        self.ai_car_controllers = []
+
+        for i in range(AI_CAR_QUANTITY):
+            placeholder = render.attachNewNode("ai-car-"+str(i))
+            carModel.instanceTo(placeholder)
+            AICarController(placeholder)
+            controller = AICarController(placeholder)
+            self.ai_car_controllers.append(controller)
+
+    def update(self, dt, cameraPosition):
+        for i in self.ai_car_controllers:
+            i.update(dt, cameraPosition)
 
 class MyApp(ShowBase):
     def __init__(self):
@@ -430,11 +487,12 @@ class MyApp(ShowBase):
 
         self.last_update_car_time = None
         self.last_update_camera_time = None
-        self.is_backing_up = False
 
         self.bindKeys()
         self.initBuildings()
         self.initDebugVector()
+
+        self.aiFleetController = AIFleetController()
 
     def initDebugVector(self):
         if HIDE_DEBUG_VECTOR:
@@ -538,16 +596,15 @@ class MyApp(ShowBase):
 
         dt = task.time - self.last_update_car_time
 
+        self.player_car_controller.disable_road_force_field = True if self.keys['shift'] else False
+
         if self.keys['w']:
             gaz = 1.2
             if self.keys['shift']:
                 gaz *= 1.0 + self.player_car_controller.velocity.length()
             self.player_car_controller.acceleration += self.player_car_controller.direction.normalized() * gaz * dt
-            self.is_backing_up = False
         elif self.keys['s']:
             self.player_car_controller.acceleration -= self.player_car_controller.direction.normalized() * 0.5 * dt
-            if self.player_car_controller.velocity.length() < 0.4:
-                self.is_backing_up = True
         elif self.keys['space']:
             self.player_car_controller.brake(dt)
 
@@ -576,9 +633,12 @@ class MyApp(ShowBase):
 
             self.player_car_controller.angular_velocity += Vec3(factor,0.0,0.0)
 
-        self.last_update_car_time = task.time
 
-        self.player_car_controller.updatePos(dt)
+        self.player_car_controller.update(dt)
+
+        self.aiFleetController.update(dt, self.camera.getPos())
+
+        self.last_update_car_time = task.time
 
         return Task.cont
 
