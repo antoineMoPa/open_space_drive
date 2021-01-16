@@ -500,6 +500,27 @@ class AIFleetController():
         for i in self.ai_car_controllers:
             i.update(dt, cameraPosition)
 
+
+# --------------------------------------------------------------------------------
+# this could be a separate file soon
+
+import cefpanda
+
+class AssetsManagerUI():
+    def __init__(self, assetManager):
+        self.assetManager = assetManager
+
+        self.ui = cefpanda.CEFPanda(
+            transparent=True,
+            size=[-1.0, 1.0, -1.0, 1.0]
+        )
+        self.ui.node().setScale(1.0)
+        self.ui.node().setPos((0, 0, 0))
+        self.ui.load_file('assets_manager/main.html')
+
+
+
+
 # --------------------------------------------------------------------------------
 # this could be a separate file soon
 
@@ -507,11 +528,13 @@ import uuid
 import json
 import importlib
 
+
 class AssetsManager():
     def __init__(self):
         self.assets = {}
         self.visibleAssets = {}
         self.readFile()
+        self.ui = AssetsManagerUI(self)
 
     def readFile(self, file_path="./assets_store.json"):
         try:
