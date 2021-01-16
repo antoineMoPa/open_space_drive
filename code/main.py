@@ -3,8 +3,10 @@ from math import pi, sin, cos, inf
 import random
 
 from direct.showbase.ShowBase import ShowBase
+from direct.filter.FilterManager import FilterManager
 from direct.task import Task
 from direct.actor.Actor import Actor
+
 from panda3d.core import AmbientLight
 from panda3d.core import DirectionalLight
 from panda3d.core import GeomVertexReader
@@ -23,6 +25,7 @@ from panda3d.core import Plane
 from panda3d.core import Shader
 from panda3d.core import CullFaceAttrib
 from panda3d.core import ColorBlendAttrib
+from panda3d.core import Texture
 
 HIDE_DEBUG_VECTOR=True
 ROAD_POS_STRENGTH=30
@@ -493,6 +496,16 @@ class MyApp(ShowBase):
         self.initDebugVector()
 
         self.aiFleetController = AIFleetController()
+
+        self.initPostProcessing()
+
+    def initPostProcessing(self):
+        manager = FilterManager(base.win, base.cam)
+        tex = Texture()
+        quad = manager.renderSceneInto(colortex=tex)
+        quad.setShader(Shader.load("shaders/post_processing.sha"))
+        quad.setShaderInput("tex", tex)
+
 
     def initDebugVector(self):
         if HIDE_DEBUG_VECTOR:

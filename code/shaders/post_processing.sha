@@ -1,0 +1,44 @@
+//Cg
+
+void vshader(
+    float4 vtx_position : POSITION,
+    float2 vtx_texcoord0 : TEXCOORD0,
+    out float4 l_position : POSITION,
+    out float2 l_texcoord0 : TEXCOORD0,
+    uniform float4 texpad_tex,
+    uniform float4x4 mat_modelproj) {
+  l_position=mul(mat_modelproj, vtx_position);
+  l_texcoord0 = vtx_position.xz * texpad_tex.xy + texpad_tex.xy;
+}
+
+void fshader(float2 l_texcoord0 : TEXCOORD0,
+             out float4 o_color : COLOR,
+             uniform sampler2D k_tex : TEXUNIT0) {
+
+  const float delta = 0.004;
+
+  // --------------------------------------------------------------------------------
+  // Glow
+  float4 main = tex2D(k_tex, l_texcoord0 + float2( 0.000, 0.000));
+  float4    a = tex2D(k_tex, l_texcoord0 + float2( 0.000, delta));
+  float4    b = tex2D(k_tex, l_texcoord0 + float2( 0.000,-delta));
+  float4    c = tex2D(k_tex, l_texcoord0 + float2( delta, 0.000));
+  float4    d = tex2D(k_tex, l_texcoord0 + float2(-delta, 0.000));
+  // --------------------------------------------------------------------------------
+
+  float l = length(main);
+  const float glow = 0.5;
+  const float4 glow_color = float4(0.2,0.6,0.8,0.0);
+
+  main += a * pow(glow * l,2.0) * glow_color;
+  main += b * pow(glow * l,2.0) * glow_color;
+  main += c * pow(glow * l,2.0) * glow_color;
+  main += d * pow(glow * l,2.0) * glow_color;
+
+  // Fake pixels
+  main *= 0.95 + 0.05 * clamp(cos(l_texcoord0.x * 1600.0)/0.1,0.0,1.0);
+  main *= 0.95 + 0.05 * clamp(cos(l_texcoord0.y * 1600.0)/0.1,0.0,1.0);
+  // --------------------------------------------------------------------------------
+
+  o_color = main;
+}
