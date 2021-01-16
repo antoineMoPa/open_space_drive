@@ -500,6 +500,76 @@ class AIFleetController():
         for i in self.ai_car_controllers:
             i.update(dt, cameraPosition)
 
+# --------------------------------------------------------------------------------
+# this could be a separate file soon
+
+import uuid
+import json
+import importlib
+
+class AssetsManager():
+    def __init__(self):
+        self.assets = {}
+        self.visibleAssets = {}
+        self.readFile()
+
+    def readFile(self, file_path="./assets_store.json"):
+        try:
+            f = open(file_path,"r")
+        except FileNotFoundError:
+            print("New assets store will be created.")
+            return
+        self.assets = json.loads(f.read())
+        f.close()
+
+    def saveFile(self, file_path="./assets_store.json"):
+        f = open(file_path,"w")
+        f.write(json.dumps(self.assets))
+        f.close()
+
+    def registerAsset(self, path, position, hpr, parameters):
+        """
+        path is the folder name of the asset
+        position is a Vec3
+        hpr is a Vec3
+        parameters is a dictionnary
+        """
+        id = uuid.uuid4()
+        asset = {
+            "path": path,
+            "position": [position.x, position.y, position.z],
+            "hpr": [hpr.x, hpr.y, hpr.z],
+            "parameters": parameters,
+            "uuid": str(id)
+        }
+        self.assets[str(id)] = asset
+        self.instanciateAsset(asset)
+        self.saveFile()
+
+    def deleteAsset(self, asset):
+        pass
+
+    def getCloseAssets(self, Point):
+        return self.assets
+
+    def instanciateCloseAssets(self, Point):
+        for i in self.assets:
+            self.instanciateAsset(self.assets[i])
+
+    def instanciateAsset(self, asset):
+        assetModule = importlib.import_module("assets."+asset['path']+".asset")
+        model = assetModule.Model.Get(asset['parameters'])
+        placeholder = render.attachNewNode(asset['uuid'])
+        model.instanceTo(placeholder)
+
+        placeholder.setPos(asset['position'][0],asset['position'][1],asset['position'][2])
+        placeholder.setHpr(asset['hpr'][0],asset['hpr'][1],asset['hpr'][2])
+        placeholder.reparentTo(render)
+        self.visibleAssets[asset['uuid']] = asset
+
+    def garbageCollectFarAssets(self, Point):
+        pass
+
 class MyApp(ShowBase):
     def __init__(self):
         ShowBase.__init__(self)
@@ -534,6 +604,18 @@ class MyApp(ShowBase):
         self.aiFleetController = AIFleetController()
 
         self.initPostProcessing()
+        self.initAssets()
+
+    def initAssets(self):
+        self.assetsManager = AssetsManager()
+        self.assetsManager.instanciateCloseAssets(self.camera.getPos())
+
+        def placePalmTree():
+            position = self.car.getPos()
+            hpr = self.car.getHpr()
+            self.assetsManager.registerAsset("palm_tree", position, hpr, {})
+
+        self.accept('p', placePalmTree, [])
 
     def initPostProcessing(self):
         manager = FilterManager(base.win, base.cam)
@@ -645,7 +727,7 @@ class MyApp(ShowBase):
 
         dt = task.time - self.last_update_car_time
 
-        self.player_car_controller.disable_road_force_field = True if self.keys['shift'] else False
+        self.player_car_controller.disable_road_force_field = True if self.keys['q'] or self.keys['e'] else False
 
         if self.keys['w']:
             gaz = 1.2
@@ -658,9 +740,9 @@ class MyApp(ShowBase):
             self.player_car_controller.brake(dt)
 
         if self.keys['q']:
-            self.player_car_controller.acceleration += self.player_car_controller.upVector() * 3.2 * dt
+            self.player_car_controller.acceleration -= self.player_car_controller.upVector() * 1.2 * dt
         if self.keys['e']:
-            self.player_car_controller.acceleration -= self.player_car_controller.upVector() * 3.2 * dt
+            self.player_car_controller.acceleration += self.player_car_controller.upVector() * 1.2 * dt
 
         carRotateMatrix = self.car.get_mat().rotateMat(0,axis=1)
 
