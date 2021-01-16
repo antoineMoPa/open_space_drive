@@ -38,6 +38,13 @@ ALIGN_VELOCITY_WITH_DIRECTION_FACTOR=2
 AI_CAR_QUANTITY=10
 AI_MAX_DISTANCE=400
 
+def pleaseMakeTransparent(nodePath):
+    nodePath.setTransparency(True)
+    nodePath.setAttrib(CullFaceAttrib.make(CullFaceAttrib.MCullNone))
+    nodePath.setDepthWrite(False)
+    nodePath.setAttrib(ColorBlendAttrib.make(ColorBlendAttrib.MAdd))
+
+
 def move_debug_vector_to(position, look_at):
     vector = render.find("scene.dae").find("Scene").find("debug_vector")
     vector.setPos(position)
@@ -150,10 +157,7 @@ class RoadBuilder():
         nodepath.setShader(Shader.load(Shader.SL_GLSL,
                                        vertex="shaders/road.vert",
                                        fragment="shaders/road.frag"))
-        nodepath.setTransparency(True)
-        nodepath.setAttrib(CullFaceAttrib.make(CullFaceAttrib.MCullNone))
-        nodepath.setDepthWrite(False)
-        nodepath.setAttrib(ColorBlendAttrib.make(ColorBlendAttrib.MAdd))
+        pleaseMakeTransparent(nodepath)
         self.nodepath = nodepath
         taskMgr.add(self.updateTask, "updateTask")
 
@@ -238,8 +242,24 @@ class CarController():
         self.velocity_damping = 0.99
         self.acceleration_damping = 0.1
         self.disable_road_force_field = False
-
         self.roadInfo = RoadInfoSingleton.get()
+        self.fires = []
+        self.initShaders()
+        self.reactors = [self.model.find("**/reactor_left"),\
+                         self.model.find("**/reactor_right")]
+
+    def initShaders(self):
+        fire_shader = Shader.load(Shader.SL_GLSL,
+                                  vertex="shaders/reactor_fire.vert",
+                                  fragment="shaders/reactor_fire.frag")
+
+
+        for fire in ["**/right_fire", "**/left_fire"]:
+            nodePath = self.model.find(fire)
+            nodePath.setShader(fire_shader)
+            pleaseMakeTransparent(nodePath)
+            self.fires.append(nodePath)
+
 
     def upVector(self):
         return self.model.getNetTransform().get_mat().xformVec(Vec3(0,0,1))
@@ -397,6 +417,19 @@ class CarController():
         self.model.setHpr(self.model, self.model.getHpr(self.model) + self.angular_velocity)
         self.model.setHpr(self.model.getHpr() + self.absolute_angular_velocity)
 
+        for fire in self.fires:
+            value = self.acceleration.length() * 10
+            fire.setShaderInput("acceleration", value)
+            fire.setShaderInput("time", (globalClock.getFrameTime()))
+
+        reactor_angle_offset = 180.0 if (self.acceleration.normalized() - self.direction).length() < 0.1 else 0
+
+        if self.acceleration.length() < 0.01:
+            reactor_angle_offset = 180.0
+
+        for reactor in self.reactors:
+            reactor.setH(-self.angular_velocity[0]*8.0 + reactor_angle_offset)
+
         self.velocity *= pow(self.velocity_damping, dt * 60)
         self.acceleration *= pow(self.acceleration_damping, dt * 60)
         self.angular_velocity *= pow(self.angular_velocity_damping, dt * 60)
@@ -410,9 +443,10 @@ class CarController():
         self.velocity = self.velocity.project(self.direction) * (blend_velocity) + self.velocity * (1.0 - blend_velocity)
 
 
+
 class PlayerCarController(CarController):
     def __init__(self, model):
-        CarController.__init__(self,model)
+        CarController.__init__(self, model)
 
     def brake(self, dt):
         self.acceleration *= pow(0.94, dt * 60)
@@ -447,9 +481,11 @@ class AICarController(CarController):
         if (cameraPosition - self.model.getPos()).length() > AI_MAX_DISTANCE:
             self.resetRandom(cameraPosition)
 
+
+
 class AIFleetController():
     def __init__(self):
-        carModel = render.find("scene.dae").find("Scene").find("ai_car")
+        carModel = loader.loadModel("../models/scene.dae").find("Scene").find("player_car")
 
         self.ai_car_controllers = []
 
