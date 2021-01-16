@@ -21,9 +21,9 @@ void main() {
   windows -= screen_position.z/1000.0;
 
   vec3 window_color = vec3(0.3, 0.3, 0.0);
-  window_color.r += 0.3 * cos(position.x / 100.0);
-  window_color.g += 0.3 * cos(position.y / 100.0);
-  window_color.b += 0.3 * cos(position.z / 100.0);
+  window_color.r += 0.3 * abs(cos(position.x / 100.0));
+  window_color.g += 0.3 * abs(cos(position.y / 100.0));
+  window_color.b += 0.3 * abs(cos(position.z / 100.0));
   col += windows * window_color;
 
   float floor = 0.0;
