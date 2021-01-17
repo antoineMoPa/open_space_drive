@@ -5,7 +5,11 @@ var assetMenuApp = new Vue({
     <div class="asset-picker ui-box">
       <h1>Asset picker</h1>
       <div>
-        <button v-on:click="addAsset('palm_tree')">Add palm tree</button>
+        <button class="preview-button"
+                v-on:click="addAsset('palm_tree')">
+          <img src="../assets/palm_tree/preview.png">
+          Add palm tree
+        </button>
       </div>
     </div>
   `,

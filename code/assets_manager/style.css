@@ -69,3 +69,17 @@ h1{
   top:30px;
   right:0;
 }
+
+.preview-button{
+  width:140px;
+  height:160px;
+  display:inline-block;
+  background:rgba(0,0,0,0.3);
+}
+
+.preview-button img{
+  width:115px;
+  height:115px;
+  margin-bottom:3px;
+  border-radius:3px;
+}
