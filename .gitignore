@@ -2,3 +2,4 @@
 __pycache__
 blob_storage
 webrtc_event_logs
+error.log

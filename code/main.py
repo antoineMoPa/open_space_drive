@@ -38,6 +38,8 @@ ALIGN_VELOCITY_WITH_DIRECTION_FACTOR=2
 AI_CAR_QUANTITY=10
 AI_MAX_DISTANCE=400
 
+OBJECT_SELECTION_DISTANCE=30
+
 def pleaseMakeTransparent(nodePath):
     nodePath.setTransparency(True)
     nodePath.setAttrib(CullFaceAttrib.make(CullFaceAttrib.MCullNone))
@@ -507,19 +509,55 @@ class AIFleetController():
 import cefpanda
 
 class AssetsManagerUI():
-    def __init__(self, assetManager):
-        self.assetManager = assetManager
-
+    def __init__(self, assetsManager, cursorObject):
+        self.assetsManager = assetsManager
         self.ui = cefpanda.CEFPanda(
             transparent=True,
             size=[-1.0, 1.0, -1.0, 1.0]
         )
         self.ui.node().setScale(1.0)
         self.ui.node().setPos((0, 0, 0))
+        self.cursorObject = cursorObject
         self.ui.load_file('assets_manager/main.html')
+        self.selection = None
+        self.nearest = None
 
 
+        self.ui.set_js_function('addAsset', self.addAsset)
+        self.ui.set_js_function('clearSelection', self.clearSelection)
+        self.ui.set_js_function('selectAsset', self.selectAsset)
+        self.ui.set_js_function('deleteAsset', self.deleteAsset)
 
+    def addAsset(self, asset_name):
+        position = self.cursorObject.getPos()
+        hpr = self.cursorObject.getHpr()
+        self.assetsManager.registerAsset("palm_tree", position, hpr, {})
+
+    def update(self):
+        if self.selection is None:
+            currentPosition = self.cursorObject.getPos()
+            self.nearest = self.assetsManager.getClosestsAsset(currentPosition)
+
+            distance = (Vec3(*self.nearest["position"]) - currentPosition).length()
+
+            if distance > OBJECT_SELECTION_DISTANCE:
+                self.nearest = None
+
+            self.ui.exec_js_func('onNearestAsset', self.nearest)
+
+    def clearSelection(self):
+        self.selection = None
+
+    def selectAsset(self, uuid):
+        if uuid not in self.assetsManager.assets:
+            return
+
+        self.selection = self.assetsManager.assets[uuid]
+        self.ui.exec_js_func('onAssetSelected', self.selection)
+
+    def deleteAsset(self, uuid):
+        self.selection = None
+        self.assetsManager.deleteAsset(uuid)
 
 # --------------------------------------------------------------------------------
 # this could be a separate file soon
@@ -530,11 +568,13 @@ import importlib
 
 
 class AssetsManager():
-    def __init__(self):
+    def __init__(self, cursorObject):
         self.assets = {}
         self.visibleAssets = {}
         self.readFile()
-        self.ui = AssetsManagerUI(self)
+        self.cursorObject = cursorObject
+        self.ui = AssetsManagerUI(self, cursorObject)
+        self.assetsNodePaths = {}
 
     def readFile(self, file_path="./assets_store.json"):
         try:
@@ -544,6 +584,10 @@ class AssetsManager():
             return
         self.assets = json.loads(f.read())
         f.close()
+
+    def update(self, task):
+        self.ui.update()
+        return Task.cont
 
     def saveFile(self, file_path="./assets_store.json"):
         f = open(file_path,"w")
@@ -569,8 +613,16 @@ class AssetsManager():
         self.instanciateAsset(asset)
         self.saveFile()
 
-    def deleteAsset(self, asset):
-        pass
+    def deleteAsset(self, uuid):
+        if uuid not in self.assets:
+            return
+        self.assetsNodePaths[uuid].removeNode()
+        del self.assets[uuid]
+        self.saveFile()
+
+    def getClosestsAsset(self, Point):
+        minIndex = min(self.assets, key=lambda i: (Point - Vec3(*self.assets[i]['position'])).length())
+        return self.assets[minIndex]
 
     def getCloseAssets(self, Point):
         return self.assets
@@ -589,6 +641,7 @@ class AssetsManager():
         placeholder.setHpr(asset['hpr'][0],asset['hpr'][1],asset['hpr'][2])
         placeholder.reparentTo(render)
         self.visibleAssets[asset['uuid']] = asset
+        self.assetsNodePaths[asset['uuid']] = placeholder
 
     def garbageCollectFarAssets(self, Point):
         pass
@@ -630,8 +683,9 @@ class MyApp(ShowBase):
         self.initAssets()
 
     def initAssets(self):
-        self.assetsManager = AssetsManager()
+        self.assetsManager = AssetsManager(self.car)
         self.assetsManager.instanciateCloseAssets(self.camera.getPos())
+        self.taskMgr.add(self.assetsManager.update, "UpdateAssets")
 
         def placePalmTree():
             position = self.car.getPos()
