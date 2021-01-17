@@ -6,8 +6,23 @@
     <link rel="stylesheet" href="style.css">
   </head>
   <body>
-    <div id="current-asset-manager"></div>
+    <button class="toggle-all-button">|||</button>
+    <div class="all">
+      <div id="current-asset-manager"></div>
+      <div id="asset-picker"></div>
+    </div>
     <script src="vue.js"></script>
     <script src="current-asset-manager.js"></script>
+    <script src="asset-picker.js"></script>
+
+    <script>
+     let toggleAllButton = document.querySelectorAll(".toggle-all-button")[0];
+     let all = document.querySelectorAll(".all")[0];
+     all.classList.add("hidden");
+     toggleAllButton.onclick = function(){
+       all.classList.toggle("hidden");
+       toggleAllButton.classList.toggle("rotate");
+     };
+    </script>
   </body>
 </html>

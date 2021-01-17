@@ -4,6 +4,10 @@ body{
   font-size:12px;
 }
 
+*:focus {
+    outline: none;
+}
+
 button{
   background:rgba(100,100,100,0.2);
   color:#fff;
@@ -11,9 +15,29 @@ button{
   border-radius:4px;
   cursor:pointer;
   padding:8px;
-  min-width:200px;
   width:300px;
   margin-bottom:5px;
+}
+
+.hidden{
+  display:none;
+}
+
+.toggle-all-button{
+  width:40px;
+  max-width:40px;
+  position:absolute;
+  top:0;
+  left:0;
+  display:inline-block;
+  transform:rotate(90deg);
+  background:none;
+  font-weight:700;
+  transition:all 0.1s;
+}
+
+.toggle-all-button.rotate{
+  transform:rotate(0deg);
 }
 
 .danger-button{
@@ -23,12 +47,25 @@ button{
 h1{
   font-size:15px;
   color:#fff;
+  margin-top:0;
 }
 
-.current-asset-manager{
+.ui-box{
   background:rgba(0,0,40,0.4);
   padding:15px;
   margin:15px;
   width:300px;
   border-radius:3px;
+}
+
+.current-asset-manager{
+  position:absolute;
+  top:30px;
+  left:0;
+}
+
+.asset-picker{
+  position:absolute;
+  top:30px;
+  right:0;
 }

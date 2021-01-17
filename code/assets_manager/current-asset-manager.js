@@ -1,8 +1,9 @@
 
-var app = new Vue({
+var currentAssetApp = new Vue({
   el: '#current-asset-manager',
   template: `
-    <div class="current-asset-manager">
+    <div class="current-asset-manager ui-box">
+      <h1>Object</h1>
       <div v-if="asset != null">
         <h1>{{asset.path}}</h1>
         <span>(uuid: {{asset.uuid}})</span><br/><br/>
@@ -20,9 +21,6 @@ var app = new Vue({
           Delete
         </button>
       </div>
-      <div>
-        <button v-on:click="addAsset('palm_tree')">Add palm tree</button>
-      </div>
     </div>
 `,
   data: {
@@ -32,9 +30,6 @@ var app = new Vue({
   methods: {
     selectAsset(uuid){
       window.selectAsset(uuid);
-    },
-    addAsset(assetName){
-      window.addAsset(assetName);
     },
     deleteAsset(uuid){
       window.deleteAsset(uuid);
@@ -46,9 +41,9 @@ var app = new Vue({
 
 
 function onNearestAsset(asset) {
-  app.nearestAsset = asset;
+  currentAssetApp.nearestAsset = asset;
 }
 
 function onAssetSelected(asset) {
-  app.asset = asset;
+  currentAssetApp.asset = asset;
 }
