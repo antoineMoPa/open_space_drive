@@ -1,5 +1,11 @@
+
+@font-face {
+  font-family: 'Quicksand';
+  src: url('Quicksand-VariableFont_wght.ttf');
+}
+
 body{
-  font-family:sans-serif;
+  font-family:'Quicksand';
   color:#fff;
   font-size:12px;
 }
