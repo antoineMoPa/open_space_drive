@@ -27,6 +27,8 @@ from panda3d.core import CullFaceAttrib
 from panda3d.core import ColorBlendAttrib
 from panda3d.core import Texture
 
+from pandac.PandaModules import WindowProperties
+
 HIDE_DEBUG_VECTOR=True
 ROAD_POS_STRENGTH=30
 BLEND_VELOCITY_FAC_TOWARDS_ROAD=0.3
@@ -650,6 +652,7 @@ class MyApp(ShowBase):
     def __init__(self):
         ShowBase.__init__(self)
 
+        self.initWindow()
         self.taskMgr.add(self.cameraFollowTask, "CameraFollowTask")
         self.taskMgr.add(self.updateCarPositionTask, "UpdateCarPositionTask")
 
@@ -681,6 +684,17 @@ class MyApp(ShowBase):
 
         self.initPostProcessing()
         self.initAssets()
+
+    def initWindow(self):
+        props = WindowProperties()
+        props.setTitle('Open Space Drive')
+        base.win.requestProperties(props)
+
+        base.pipe.getDisplayWidth()
+
+        props = WindowProperties()
+        props.setSize(base.pipe.getDisplayWidth(), base.pipe.getDisplayHeight())
+        base.win.requestProperties(props)
 
     def initAssets(self):
         self.assetsManager = AssetsManager(self.car)
