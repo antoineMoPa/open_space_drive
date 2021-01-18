@@ -2,6 +2,7 @@ import uuid
 import json
 import importlib
 import cefpanda
+from Refresh import Refresh
 
 from panda3d.core import Vec3
 from direct.task import Task
@@ -18,11 +19,14 @@ class AssetsManagerUI():
         self.ui.node().setScale(1.0)
         self.ui.node().setPos((0, 0, 0))
         self.cursorObject = cursorObject
-        self.ui.load_file('assets_manager/main.html')
+        self.load()
         self.selection = None
         self.nearest = None
 
+        Refresh.addListener(self.load)
 
+    def load(self):
+        self.ui.load_file('assets_manager/main.html')
         self.ui.set_js_function('addAsset', self.addAsset)
         self.ui.set_js_function('clearSelection', self.clearSelection)
         self.ui.set_js_function('selectAsset', self.selectAsset)
@@ -38,6 +42,9 @@ class AssetsManagerUI():
             currentPosition = self.cursorObject.getPos()
             self.nearest = self.assetsManager.getClosestsAsset(currentPosition)
 
+            if self.nearest is None:
+                return
+
             distance = (Vec3(*self.nearest["position"]) - currentPosition).length()
 
             if distance > OBJECT_SELECTION_DISTANCE:
@@ -48,16 +55,16 @@ class AssetsManagerUI():
     def clearSelection(self):
         self.selection = None
 
-    def selectAsset(self, uuid):
-        if uuid not in self.assetsManager.assets:
+    def selectAsset(self, _uuid):
+        if _uuid not in self.assetsManager.assets:
             return
 
-        self.selection = self.assetsManager.assets[uuid]
+        self.selection = self.assetsManager.assets[_uuid]
         self.ui.exec_js_func('onAssetSelected', self.selection)
 
-    def deleteAsset(self, uuid):
+    def deleteAsset(self, _uuid):
         self.selection = None
-        self.assetsManager.deleteAsset(uuid)
+        self.assetsManager.deleteAsset(_uuid)
 
 
 class AssetsManager():
@@ -87,13 +94,16 @@ class AssetsManager():
         f.write(json.dumps(self.assets))
         f.close()
 
-    def generateAsset(self, path, position, hpr, parameters={}):
+    def generateAsset(self, path, position, hpr, parameters={}, _uuid=None):
+        if _uuid is None:
+            _uuid = uuid.uuid4()
+
         return {
             "path": path,
             "position": [position.x, position.y, position.z],
             "hpr": [hpr.x, hpr.y, hpr.z],
             "parameters": parameters,
-            "uuid": str(id)
+            "uuid": str(_uuid)
         }
 
     def registerAsset(self, path, position, hpr, parameters={}):
@@ -103,9 +113,9 @@ class AssetsManager():
         hpr is a Vec3
         parameters is a dictionnary
         """
-        id = uuid.uuid4()
-        asset = self.generateAsset(path, position, hpr, parameters)
-        self.assets[str(id)] = asset
+        _uuid = uuid.uuid4()
+        asset = self.generateAsset(path, position, hpr, parameters, _uuid)
+        self.assets[str(_uuid)] = asset
         self.instanciateAsset(asset)
         self.saveFile()
 
@@ -114,9 +124,14 @@ class AssetsManager():
             return
         self.assetsNodePaths[uuid].removeNode()
         del self.assets[uuid]
+        if uuid in self.visibleAssets:
+            del self.visibleAssets[uuid]
         self.saveFile()
 
     def getClosestsAsset(self, Point):
+        if len(self.assets) == 0:
+            return None
+
         minIndex = min(self.assets, key=lambda i: (Point - Vec3(*self.assets[i]['position'])).length())
         return self.assets[minIndex]
 

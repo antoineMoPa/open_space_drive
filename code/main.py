@@ -30,6 +30,7 @@ from panda3d.core import Texture
 from pandac.PandaModules import WindowProperties
 
 from AssetsManager import AssetsManager
+from Refresh import Refresh
 
 HIDE_DEBUG_VECTOR=True
 ROAD_POS_STRENGTH=30
@@ -41,7 +42,6 @@ ALIGN_VELOCITY_WITH_DIRECTION_FACTOR=2
 
 AI_CAR_QUANTITY=10
 AI_MAX_DISTANCE=400
-
 
 def pleaseMakeTransparent(nodePath):
     nodePath.setTransparency(True)
@@ -179,16 +179,15 @@ def vectorRatio(v1, v2):
     return sorted([a,b,c], key=lambda x: abs(x))[-1]
 
 class RoadInfoSingleton():
-    def __init__(self):
-        self.roadInfo = None
+    roadInfo = None
 
     @classmethod
     def set(self, roadInfo):
-        self.roadInfo = roadInfo
+        RoadInfoSingleton.roadInfo = roadInfo
 
     @classmethod
     def get(self):
-        return self.roadInfo
+        return RoadInfoSingleton.roadInfo
 
 class RoadInfo():
     def __init__(self):
@@ -662,6 +661,7 @@ class OpenSpaceDriveApp(ShowBase):
         self.addNewListenedKey('arrow_down')   # Head up
         self.addNewListenedKey('arrow_left')   # Roll left
         self.addNewListenedKey('arrow_right')  # Roll right
+        self.addNewListenedKey('f5')           # Refresh
 
 
     def updateCarPositionTask(self, task):
@@ -718,6 +718,9 @@ class OpenSpaceDriveApp(ShowBase):
         self.aiFleetController.update(dt, self.camera.getPos())
 
         self.last_update_car_time = task.time
+
+        if self.keys['f5']:
+            Refresh.sendRefresh()
 
         return Task.cont
 
