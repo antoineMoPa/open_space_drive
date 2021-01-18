@@ -16,8 +16,9 @@ out vec3 normal;
 
 
 void main() {
-  position = p3d_Vertex;
-  gl_Position = screen_position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
+  // Floor position to make sure windows don't go over edges
+  position = floor(p3d_Vertex);
+  gl_Position = screen_position = p3d_ModelViewProjectionMatrix * position;
   texcoord = p3d_MultiTexCoord0;
   normal = p3d_Normal;
 }

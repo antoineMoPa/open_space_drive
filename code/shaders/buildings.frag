@@ -14,9 +14,11 @@ void main() {
   col = vec3(0.3, 0.0, 0.3);
 
   float windows = 1.0;
-  windows *= mix(clamp(cos(position.x * 4.0)/0.1, 0.0,1.0), 1.0, abs(normal.x));
-  windows *= mix(clamp(cos(position.y * 4.0)/0.1, 0.0,1.0), 1.0, abs(normal.y));
-  windows *= clamp(cos(position.z * 4.0)/0.1, 0.0,1.0);
+  const float TAU = 6.2832;
+  const float offset = 3.1416;
+  windows *= mix(clamp(cos(position.x * TAU + offset)/0.1, 0.0,1.0), 1.0, abs(normal.x));
+  windows *= mix(clamp(cos(position.y * TAU + offset)/0.1, 0.0,1.0), 1.0, abs(normal.y));
+  windows *= clamp(cos(position.z * TAU + offset)/0.1, 0.0,1.0);
   windows *= 1.0-abs(normal.z);
   windows -= screen_position.z/1000.0;
 
