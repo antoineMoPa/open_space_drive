@@ -2,31 +2,43 @@
 var assetMenuApp = new Vue({
   el: '#asset-picker',
   template: `
-    <div class="asset-picker ui-box">
-      <h1>Asset picker</h1>
-      <div>
-        <button class="preview-button"
-                v-on:click="addAsset('palm_tree')">
-          <img src="../assets/palm_tree/preview/preview.png"
-               v-on:mouseenter="mouseEnter"
-               v-on:mouseleave="mouseLeave">
-          Add palm tree
-        </button>
-      </div>
+    <div>
+      <button class="toggle-button" style="right:0;"
+              v-on:click="shown = !shown">|||</button>
+      <transition name="menu-pop">
+        <div class="asset-picker ui-box" v-if="shown">
+          <h1>Asset picker</h1>
+          <div>
+            <button v-for="asset in assetsList"
+                    class="preview-button"
+                    v-on:click="addAsset(asset)">
+              <img v-bind:src="'../assets/'+asset+'/preview/preview.png'"
+                   v-bind:assetName="asset"
+                   v-on:mouseenter="mouseEnter"
+                   v-on:mouseleave="mouseLeave">
+              Add '{{asset}}'
+            </button>
+          </div>
+        </div>
+      </transition>
     </div>
   `,
   data: {
-    imageIndex: 0
+    shown: false,
+    assetsList: []
   },
   methods: {
     addAsset(assetName){
       window.addAsset(assetName);
     },
     mouseEnter(e){
-      e.target.src = "../assets/palm_tree/preview/preview.gif";
+      e.target.src = "../assets/" + e.target.getAttribute("assetName") + "/preview/preview.gif";
     },
     mouseLeave(e){
-      e.target.src = "../assets/palm_tree/preview/preview.png";
+      e.target.src = "../assets/" + e.target.getAttribute("assetName") + "/preview/preview.png";
     }
+  },
+  mounted(){
+    this.assetsList = window.assets.assets;
   }
 });
