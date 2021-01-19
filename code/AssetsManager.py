@@ -35,7 +35,7 @@ class AssetsManagerUI():
     def addAsset(self, asset_name):
         position = self.cursorObject.getPos()
         hpr = self.cursorObject.getHpr()
-        self.assetsManager.registerAsset("palm_tree", position, hpr, {})
+        self.assetsManager.registerAsset(asset_name, position, hpr, {})
 
     def update(self):
         if self.selection is None:
@@ -75,6 +75,21 @@ class AssetsManager():
         self.cursorObject = cursorObject
         self.ui = AssetsManagerUI(self, cursorObject) if useUI else None
         self.assetsNodePaths = {}
+        Refresh.addListener(self.refresh)
+
+    def refresh(self):
+        """
+        F5 handler
+        """
+
+        for uuid in self.visibleAssets:
+            self.assetsNodePaths[uuid].removeNode()
+        self.visibleAssets = {}
+        self.assetsNodePaths = {}
+        self.readFile()
+
+        self.instanciateCloseAssets(Vec3(0))
+
 
     def readFile(self, file_path="./assets_store.json"):
         try:
@@ -144,7 +159,7 @@ class AssetsManager():
 
     def instanciateAsset(self, asset):
         assetModule = importlib.import_module("assets."+asset['path']+".asset")
-        model = assetModule.Model.Get(asset['parameters'])
+        model = assetModule.Model.Get("assets/" + asset['path'], asset['parameters'])
         placeholder = render.attachNewNode(asset['uuid'])
         model.instanceTo(placeholder)
 

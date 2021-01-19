@@ -10,6 +10,8 @@ import os
 from panda3d.core import loadPrcFileData
 loadPrcFileData("", "window-type offscreen")
 loadPrcFileData("", "win-size 115 115")
+# disable cache
+loadPrcFileData("", "model-cache-dir")
 
 PREVIEW_FRAMES=30
 
@@ -36,23 +38,24 @@ class PreviewApp(OpenSpaceDriveApp):
 
             d = height * 4.5
             self.camera.setPos(Vec3(d,-d, d))
-            self.camera.lookAt(Vec3(0,0,height*1.5))
+            self.camera.lookAt(Vec3(0,0,height))
 
             preview_folder = "assets/"+asset_name+'/preview/'
 
             if not os.path.exists(preview_folder):
                 os.makedirs(preview_folder)
 
-
             for i in range(0,PREVIEW_FRAMES):
                 nodePath.setH(i/PREVIEW_FRAMES*360)
                 base.graphicsEngine.render_frame()
                 base.screenshot(preview_folder+'/'+("%04d" % i)+'.png', False)
 
-            os.system("avconv -i " + preview_folder + "/%04d.png " + preview_folder + "/preview.gif")
+            os.system("avconv -i " + preview_folder + "/%04d.png -y " + preview_folder + "/preview.gif")
             os.system("rm " + preview_folder + "/*.png")
             base.graphicsEngine.render_frame()
             base.screenshot(preview_folder+'/preview.png', False)
 
+            nodePath.remove()
 
-app = PreviewApp()
+if __name__ == "__main__":
+    app = PreviewApp()

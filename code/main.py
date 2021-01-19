@@ -32,6 +32,11 @@ from pandac.PandaModules import WindowProperties
 from AssetsManager import AssetsManager
 from Refresh import Refresh
 
+from panda3d.core import loadPrcFileData
+
+# disable cache
+loadPrcFileData("", "model-cache-dir")
+
 HIDE_DEBUG_VECTOR=True
 ROAD_POS_STRENGTH=30
 BLEND_VELOCITY_FAC_TOWARDS_ROAD=0.3
