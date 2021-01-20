@@ -600,7 +600,7 @@ class OpenSpaceDriveApp(ShowBase):
         self.dlightnp = dlnp
 
         alight = AmbientLight('alight')
-        alight.setColor((0.2, 0.0, 0.5, 0.3))
+        alight.setColor((0.05, 0.0, 0.08, 0.3))
         alnp = render.attachNewNode(alight)
         render.setLight(alnp)
 
