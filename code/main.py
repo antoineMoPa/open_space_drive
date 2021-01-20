@@ -587,6 +587,15 @@ class OpenSpaceDriveApp(ShowBase):
         nodePath.setShader(Shader.load(Shader.SL_GLSL,
                                        vertex="shaders/buildings.vert",
                                        fragment="shaders/buildings.frag"))
+
+        self.buildingsNodePath = nodePath
+        self.taskMgr.add(self.updateBuildings, "Update Buildings")
+
+    def updateBuildings(self, task):
+        self.buildingsNodePath.setShaderInput("camera_position", self.camera.getPos())
+        return Task.cont
+
+
     def addLights(self):
         dlight = DirectionalLight('global_dlight')
         dlnp = render.attachNewNode(dlight)
