@@ -1,6 +1,8 @@
 
 from math import pi, sin, cos, inf
 import random
+from io import StringIO
+import sys
 
 from direct.showbase.ShowBase import ShowBase
 from direct.filter.FilterManager import FilterManager
@@ -546,6 +548,11 @@ class OpenSpaceDriveApp(ShowBase):
         self.initPostProcessing()
         self.initAssets()
 
+        Refresh.addListener(self.refresh)
+
+    def refresh(self):
+        self.refreshBuildings()
+
     def initWindow(self):
         props = WindowProperties()
         props.setTitle('Open Space Drive')
@@ -582,13 +589,19 @@ class OpenSpaceDriveApp(ShowBase):
             vector = render.find("scene.dae").find("Scene").find("debug_vector")
         vector.hide()
 
+    def refreshBuildings(self):
+        nodePath = self.buildingsNodePath
+        nodePath = render.find("scene.dae").find("Scene").find("Buildings")
+
+        nodePath.setShader(Shader.make(Shader.SL_GLSL,
+                                       open("shaders/buildings.vert").read(),
+                                       open("shaders/buildings.frag").read()))
+
+
     def initBuildings(self):
         nodePath = render.find("scene.dae").find("Scene").find("Buildings")
-        nodePath.setShader(Shader.load(Shader.SL_GLSL,
-                                       vertex="shaders/buildings.vert",
-                                       fragment="shaders/buildings.frag"))
-
         self.buildingsNodePath = nodePath
+        self.refreshBuildings()
         self.taskMgr.add(self.updateBuildings, "Update Buildings")
 
     def updateBuildings(self, task):
