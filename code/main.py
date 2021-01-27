@@ -27,7 +27,9 @@ from panda3d.core import Plane
 from panda3d.core import Shader
 from panda3d.core import CullFaceAttrib
 from panda3d.core import ColorBlendAttrib
+from panda3d.core import TexGenAttrib
 from panda3d.core import Texture
+from panda3d.core import TextureStage
 
 from pandac.PandaModules import WindowProperties
 
@@ -47,7 +49,7 @@ HALF_ROAD_WIDTH=3
 
 ALIGN_VELOCITY_WITH_DIRECTION_FACTOR=2
 
-AI_CAR_QUANTITY=10
+AI_CAR_QUANTITY=0
 AI_MAX_DISTANCE=400
 
 def pleaseMakeTransparent(nodePath):
@@ -458,6 +460,31 @@ class CarController():
 class PlayerCarController(CarController):
     def __init__(self, model):
         CarController.__init__(self, model)
+        Refresh.addListener(self.refreshBodyShader)
+        self.initBodyShader()
+
+    def initBodyShader(self):
+        rig = NodePath('rig')
+        buffer = base.win.makeCubeMap('env', 128, rig)
+        rig.reparentTo(self.model)
+
+        lens = rig.find('**/+Camera').node().getLens()
+        lens.setNearFar(30, 1000)
+
+        ts = TextureStage('env')
+        self.model.setTexGen(ts, TexGenAttrib.MWorldCubeMap)
+        self.model.setTexture(buffer.getTexture())
+
+        self.refreshBodyShader()
+
+    def refreshBodyShader(self):
+        self.model.setShader(Shader.make(Shader.SL_GLSL,
+                                         open("shaders/playerCar.vert").read(),
+                                         open("shaders/playerCar.frag").read()))
+
+    def updateCameraUniform(self, task):
+        self.model.setShaderInput("cameraPosition", base.camera.getPos())
+        return Task.cont
 
     def brake(self, dt):
         self.acceleration *= pow(0.94, dt * 60)
@@ -534,7 +561,11 @@ class OpenSpaceDriveApp(ShowBase):
 
         self.car = dae.find("Scene").find("player_car")
 
-        self.player_car_controller = PlayerCarController(self.car)
+        self.playerCarController = PlayerCarController(self.car)
+        self.taskMgr.add(self.playerCarController.updateCameraUniform,
+                         "UpdateCarCameraUniform")
+
+
 
         self.last_update_car_time = None
         self.last_update_camera_time = None
@@ -646,7 +677,7 @@ class OpenSpaceDriveApp(ShowBase):
 
         dt = task.time - self.last_update_camera_time
 
-        car_dir = self.player_car_controller.direction
+        car_dir = self.playerCarController.direction
 
         current_cam_pos = self.last_cam_pos
         self.camera.setPos(self.car, Vec3(0.0,-25.0,4.0))
@@ -702,34 +733,34 @@ class OpenSpaceDriveApp(ShowBase):
 
         dt = task.time - self.last_update_car_time
 
-        self.player_car_controller.disable_road_force_field = True if self.keys['q'] or self.keys['e'] else False
+        self.playerCarController.disable_road_force_field = True if self.keys['q'] or self.keys['e'] else False
 
         if self.keys['w']:
             gaz = 1.2
             if self.keys['shift']:
-                gaz *= 1.0 + self.player_car_controller.velocity.length()
-            self.player_car_controller.acceleration += self.player_car_controller.direction.normalized() * gaz * dt
+                gaz *= 1.0 + self.playerCarController.velocity.length()
+            self.playerCarController.acceleration += self.playerCarController.direction.normalized() * gaz * dt
         elif self.keys['s']:
-            self.player_car_controller.acceleration -= self.player_car_controller.direction.normalized() * 0.5 * dt
+            self.playerCarController.acceleration -= self.playerCarController.direction.normalized() * 0.5 * dt
         elif self.keys['space']:
-            self.player_car_controller.brake(dt)
+            self.playerCarController.brake(dt)
 
         if self.keys['q']:
-            self.player_car_controller.acceleration -= self.player_car_controller.upVector() * 1.2 * dt
+            self.playerCarController.acceleration -= self.playerCarController.upVector() * 1.2 * dt
         if self.keys['e']:
-            self.player_car_controller.acceleration += self.player_car_controller.upVector() * 1.2 * dt
+            self.playerCarController.acceleration += self.playerCarController.upVector() * 1.2 * dt
 
         carRotateMatrix = self.car.get_mat().rotateMat(0,axis=1)
 
         if self.keys['arrow_up']:
-            self.player_car_controller.angular_velocity += Vec3(0.0,-1.50,0) * dt
+            self.playerCarController.angular_velocity += Vec3(0.0,-1.50,0) * dt
         if self.keys['arrow_down']:
-            self.player_car_controller.angular_velocity += Vec3(0.0,1.50,0) * dt
+            self.playerCarController.angular_velocity += Vec3(0.0,1.50,0) * dt
 
         if self.keys[TURN_LEFT_KEY]:
-            self.player_car_controller.angular_velocity += Vec3(0.0,0.0,-2.0) * dt
+            self.playerCarController.angular_velocity += Vec3(0.0,0.0,-2.0) * dt
         elif self.keys[TURN_RIGHT_KEY]:
-            self.player_car_controller.angular_velocity += Vec3(0.0,0.0,2.0) * dt
+            self.playerCarController.angular_velocity += Vec3(0.0,0.0,2.0) * dt
 
         if self.keys[ROLL_LEFT_KEY] or self.keys[ROLL_RIGHT_KEY]:
             factor = 4.0 * dt
@@ -737,10 +768,10 @@ class OpenSpaceDriveApp(ShowBase):
             if self.keys[ROLL_RIGHT_KEY]:
                 factor *= -1
 
-            self.player_car_controller.angular_velocity += Vec3(factor,0.0,0.0)
+            self.playerCarController.angular_velocity += Vec3(factor,0.0,0.0)
 
 
-        self.player_car_controller.update(dt)
+        self.playerCarController.update(dt)
 
         self.aiFleetController.update(dt, self.camera.getPos())
 

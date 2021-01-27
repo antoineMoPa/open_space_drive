@@ -15,7 +15,7 @@ void fshader(float2 l_texcoord0 : TEXCOORD0,
              out float4 o_color : COLOR,
              uniform sampler2D k_tex : TEXUNIT0) {
 
-  const float delta = 0.004;
+  const float delta = 0.003;
 
   // --------------------------------------------------------------------------------
   // Glow
@@ -34,11 +34,6 @@ void fshader(float2 l_texcoord0 : TEXCOORD0,
   main += b * pow(glow * l,2.0) * glow_color;
   main += c * pow(glow * l,2.0) * glow_color;
   main += d * pow(glow * l,2.0) * glow_color;
-
-  // Fake pixels
-  main *= 0.95 + 0.05 * clamp(cos(l_texcoord0.x * 1600.0)/0.1,0.0,1.0);
-  main *= 0.95 + 0.05 * clamp(cos(l_texcoord0.y * 1600.0)/0.1,0.0,1.0);
-  // --------------------------------------------------------------------------------
 
   o_color = main;
 }
