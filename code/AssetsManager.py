@@ -2,6 +2,7 @@ import uuid
 import json
 import importlib
 import cefpanda
+from WebUI import WebUI
 from Refresh import Refresh
 
 from panda3d.core import Vec3
@@ -12,10 +13,7 @@ OBJECT_SELECTION_DISTANCE=30
 class AssetsManagerUI():
     def __init__(self, assetsManager, cursorObject):
         self.assetsManager = assetsManager
-        self.ui = cefpanda.CEFPanda(
-            transparent=True,
-            size=[-1.0, 1.0, -1.0, 1.0]
-        )
+        self.ui = WebUI.get()
         self.ui.node().setScale(1.0)
         self.ui.node().setPos((0, 0, 0))
         self.cursorObject = cursorObject
@@ -26,7 +24,6 @@ class AssetsManagerUI():
         Refresh.addListener(self.load)
 
     def load(self):
-        self.ui.load_file('assets_manager/main.html')
         self.ui.set_js_function('addAsset', self.addAsset)
         self.ui.set_js_function('clearSelection', self.clearSelection)
         self.ui.set_js_function('selectAsset', self.selectAsset)

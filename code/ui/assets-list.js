@@ -1,0 +1,1 @@
+var assets = {"assets": ["streetlight", "road_straight", "palm_tree"]};

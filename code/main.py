@@ -30,6 +30,7 @@ from panda3d.core import ColorBlendAttrib
 from panda3d.core import TexGenAttrib
 from panda3d.core import Texture
 from panda3d.core import TextureStage
+from WebUI import WebUI
 
 from pandac.PandaModules import WindowProperties
 
@@ -462,6 +463,18 @@ class PlayerCarController(CarController):
         CarController.__init__(self, model)
         Refresh.addListener(self.refreshBodyShader)
         self.initBodyShader()
+        self.ui = WebUI.get()
+        self.loadUI()
+
+    def loadUI(self):
+        self.ui.set_js_function('alignCar', self.alignCar)
+
+    def alignCar(self):
+        hpr = self.model.getHpr()
+        hpr.x = round(hpr.x/45) * 45
+        hpr.y = round(hpr.y/45) * 45
+        hpr.z = round(hpr.z/45) * 45
+        self.model.setHpr(hpr)
 
     def initBodyShader(self):
         rig = NodePath('rig')
