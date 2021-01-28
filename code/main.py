@@ -495,8 +495,9 @@ class PlayerCarController(CarController):
                                          open("shaders/playerCar.vert").read(),
                                          open("shaders/playerCar.frag").read()))
 
-    def updateCameraUniform(self, task):
+    def updatePlayerCar(self, task):
         self.model.setShaderInput("cameraPosition", base.camera.getPos())
+        self.ui.exec_js_func('onCarSpeed', int(self.velocity.length() * 60))
         return Task.cont
 
     def brake(self, dt):
@@ -575,8 +576,7 @@ class OpenSpaceDriveApp(ShowBase):
         self.car = dae.find("Scene").find("player_car")
 
         self.playerCarController = PlayerCarController(self.car)
-        self.taskMgr.add(self.playerCarController.updateCameraUniform,
-                         "UpdateCarCameraUniform")
+        self.taskMgr.add(self.playerCarController.updatePlayerCar, "UpdatePlayerCar")
 
 
 
