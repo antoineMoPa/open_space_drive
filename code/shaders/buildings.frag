@@ -71,8 +71,8 @@ vec4 wallColorDistanceBlend(vec3 p, vec3 c, vec4 col){
 vec4 drawFloor(vec3 wc, vec3 wr, vec3 up, vec3 n, vec3 c, vec3 p, float s) {
   vec4 col = vec4(0.0);
 
-  vec3 P0 = wc - wr * 0.25 * s - up * 0.25 * s - n * s * 0.25;
-  vec3 P02 = -n * s;
+  vec3 P0 = wc - wr * 0.25 * s - up * 0.25 * s - n * s * 0.5;
+  vec3 P02 = -n * s * 0.75;
   vec3 P01 = wr * 0.5 * s;
 
   vec4 intersection = planeLineIntersection(P0, P02, P01, c, p).xyzw;
@@ -92,8 +92,8 @@ vec4 drawFloor(vec3 wc, vec3 wr, vec3 up, vec3 n, vec3 c, vec3 p, float s) {
 vec4 drawRightWall(vec3 wc, vec3 wr, vec3 up, vec3 n, vec3 c, vec3 p, float s) {
   vec4 col = vec4(0.0);
 
-  vec3 P0 = wc - up * 0.25 * s + wr * 0.25 * s - n * s * 0.25;
-  vec3 P02 = -n * s;
+  vec3 P0 = wc - up * 0.25 * s + wr * 0.25 * s - n * s * 0.5;
+  vec3 P02 = -n * s * 0.75;
   vec3 P01 = up * 0.5 * s;
 
   vec4 intersection = planeLineIntersection(P0, P02, P01, c, p).xyzw;
@@ -113,8 +113,8 @@ vec4 drawRightWall(vec3 wc, vec3 wr, vec3 up, vec3 n, vec3 c, vec3 p, float s) {
 vec4 drawLeftWall(vec3 wc, vec3 wr, vec3 up, vec3 n, vec3 c, vec3 p, float s) {
   vec4 col = vec4(0.0);
 
-  vec3 P0 = wc - up * 0.25 * s - wr * 0.25 * s - n * s * 0.25;
-  vec3 P02 = -n * s;
+  vec3 P0 = wc - up * 0.25 * s - wr * 0.25 * s - n * s * 0.5;
+  vec3 P02 = -n * s * 0.75;
   vec3 P01 = up * 0.5 * s;
 
   vec4 intersection = planeLineIntersection(P0, P02, P01, c, p).xyzw;
@@ -134,8 +134,8 @@ vec4 drawLeftWall(vec3 wc, vec3 wr, vec3 up, vec3 n, vec3 c, vec3 p, float s) {
 vec4 drawCeiling(vec3 wc, vec3 wr, vec3 up, vec3 n, vec3 c, vec3 p, float s) {
   vec4 col = vec4(0.0);
 
-  vec3 P0 = wc - wr * 0.25 * s + up * 0.25 * s - n * s * 0.25;
-  vec3 P02 = -n * s;
+  vec3 P0 = wc - wr * 0.25 * s + up * 0.25 * s - n * s * 0.5;
+  vec3 P02 = -n * s * 0.75;
   vec3 P01 = wr * 0.5 * s;
 
   vec4 intersection = planeLineIntersection(P0, P02, P01, c, p).xyzw;
