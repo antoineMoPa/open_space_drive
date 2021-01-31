@@ -424,7 +424,8 @@ class CarController():
 
     def update(self, dt):
         self.velocity += self.acceleration * (dt * 60)
-        self.model.setPos(self.model.getPos() + self.velocity * (dt * 60))
+        # TODO: why can't we put dt in there and still have the animation run smoothly?
+        self.model.setPos(self.model.getPos() + self.velocity * 3.0)
 
         self.model.getNetTransform().get_mat().getRow3(1)
 
@@ -449,7 +450,8 @@ class CarController():
         self.angular_velocity *= pow(self.angular_velocity_damping, dt * 60)
         self.absolute_angular_velocity *= pow(self.angular_velocity_damping, dt * 60)
 
-        self.alignCarTowardsForceFields(dt)
+        # TODO: why can't we put dt in there and still have the animation run smoothly?
+        self.alignCarTowardsForceFields(3.0/60.0)
 
         self.direction = self.model.getNetTransform().get_mat().getRow3(1)
 
@@ -478,7 +480,7 @@ class PlayerCarController(CarController):
 
     def initBodyShader(self):
         rig = NodePath('rig')
-        buffer = base.win.makeCubeMap('env', 128, rig)
+        buffer = base.win.makeCubeMap('env', 64, rig)
         rig.reparentTo(self.model)
 
         lens = rig.find('**/+Camera').node().getLens()
@@ -558,13 +560,12 @@ class OpenSpaceDriveApp(ShowBase):
 
         self.initWindow()
         self.taskMgr.add(self.cameraFollowTask, "CameraFollowTask")
-        self.taskMgr.add(self.updateCarPositionTask, "UpdateCarPositionTask")
+        self.taskMgr.add(self.processPlayerInputTask, "UpdateCarPositionTask")
 
         dae = loader.loadModel("../models/scene.dae")
         dae.reparentTo(render)
         dae.setHpr(0,90,0)
         self.scene = dae
-        self.last_cam_pos = Vec3(0.0)
 
         self.addLights()
 
@@ -577,8 +578,7 @@ class OpenSpaceDriveApp(ShowBase):
 
         self.playerCarController = PlayerCarController(self.car)
         self.taskMgr.add(self.playerCarController.updatePlayerCar, "UpdatePlayerCar")
-
-
+        self.taskMgr.add(self.updateAssetManager, "UpdateAssetManager")
 
         self.last_update_car_time = None
         self.last_update_camera_time = None
@@ -594,6 +594,8 @@ class OpenSpaceDriveApp(ShowBase):
 
         Refresh.addListener(self.refresh)
 
+        base.mouseInterface.detachNode()
+
     def refresh(self):
         self.refreshBuildings()
 
@@ -607,11 +609,11 @@ class OpenSpaceDriveApp(ShowBase):
         props = WindowProperties()
         props.setSize(base.pipe.getDisplayWidth(), base.pipe.getDisplayHeight())
         base.win.requestProperties(props)
+        base.setFrameRateMeter(True)
 
     def initAssets(self):
         self.assetsManager = AssetsManager(self.car)
         self.assetsManager.instanciateCloseAssets(self.camera.getPos())
-        self.taskMgr.add(self.assetsManager.update, "UpdateAssets")
 
         def placePalmTree():
             position = self.car.getPos()
@@ -652,6 +654,9 @@ class OpenSpaceDriveApp(ShowBase):
         self.buildingsNodePath.setShaderInput("camera_position", self.camera.getPos())
         return Task.cont
 
+    def updateAssetManager(self, task):
+        self.assetsManager.update(self.playerCarController.model.getPos())
+        return Task.cont
 
     def addLights(self):
         dlight = DirectionalLight('global_dlight')
@@ -692,25 +697,18 @@ class OpenSpaceDriveApp(ShowBase):
 
         car_dir = self.playerCarController.direction
 
-        current_cam_pos = self.last_cam_pos
-        self.camera.setPos(self.car, Vec3(0.0,-25.0,4.0))
+        if self.assetsManager.ui.currentlyMovingUUID is not None:
+            self.camera.setPos(self.car, Vec3(0.0,0.0,300.0))
+            self.camera.lookAt(self.car)
+        else:
+            model = self.playerCarController.model
+            currentCamPos = self.camera.getPos(model)
+            targetCamPos = Vec3(0.0,-25.0,4.0)
+            convergeSpeed = 8.0 / 60.0
+            self.camera.setPos(model, currentCamPos * (1.0-convergeSpeed) + \
+                                      (targetCamPos * convergeSpeed))
+            self.camera.setHpr(self.car.getHpr())
 
-
-        # prevent smooth for now
-        #self.camera.setHpr(self.car.getHpr())
-        #self.dlightnp.setPos(self.camera.getPos())
-        #self.dlightnp.headsUp(self.car)
-        #self.last_update_camera_time = task.time
-        #return Task.cont
-
-        #self.camera.setPos(self.car, Vec3(0.0,-25.0,0.0))
-        target_cam_pos = self.camera.getPos()
-        convergeSpeed = 8.0 * dt
-
-        self.last_cam_pos = (current_cam_pos * (1.0-convergeSpeed) + (target_cam_pos * convergeSpeed))
-        self.camera.setPos(self.last_cam_pos)
-
-        self.camera.setHpr(self.car.getHpr())
         self.dlightnp.setPos(self.camera.getPos())
         self.dlightnp.headsUp(self.car)
 
@@ -733,9 +731,9 @@ class OpenSpaceDriveApp(ShowBase):
         self.addNewListenedKey('arrow_left')   # Roll left
         self.addNewListenedKey('arrow_right')  # Roll right
         self.addNewListenedKey('f5')           # Refresh
+        self.addNewListenedKey('Return')       # Place asset
 
-
-    def updateCarPositionTask(self, task):
+    def processPlayerInputTask(self, task):
         ROLL_LEFT_KEY  = "arrow_left"
         ROLL_RIGHT_KEY = "arrow_right"
         TURN_LEFT_KEY  = "a"
@@ -774,6 +772,9 @@ class OpenSpaceDriveApp(ShowBase):
             self.playerCarController.angular_velocity += Vec3(0.0,0.0,-2.0) * dt
         elif self.keys[TURN_RIGHT_KEY]:
             self.playerCarController.angular_velocity += Vec3(0.0,0.0,2.0) * dt
+
+        if self.keys['Return']:
+            self.assetsManager.ui.currentlyMovingUUID = None
 
         if self.keys[ROLL_LEFT_KEY] or self.keys[ROLL_RIGHT_KEY]:
             factor = 4.0 * dt
