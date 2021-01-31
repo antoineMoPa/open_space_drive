@@ -15,10 +15,12 @@ out vec2 texcoord;
 out vec4 screen_position;
 out vec4 position;
 out vec3 normal;
+out vec4 worldPosition;
 
 void main() {
   normal = p3d_Normal;
   position = p3d_Vertex;
+  worldPosition = p3d_ModelViewMatrix * p3d_Vertex;
   gl_Position = screen_position = p3d_ModelViewProjectionMatrix * p3d_Vertex;
   texcoord = p3d_MultiTexCoord0;
 }

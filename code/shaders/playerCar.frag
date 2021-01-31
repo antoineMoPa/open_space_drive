@@ -7,6 +7,7 @@ uniform vec3 cameraPosition;
 in vec2 texcoord;
 in vec4 position;
 in vec4 screen_position;
+in vec4 worldPosition;
 in vec3 normal;
 
 uniform struct {
@@ -19,7 +20,12 @@ uniform struct {
 void main() {
   vec4 col = vec4(0.0);
 
-  col += p3d_Material.diffuse * 0.3;
+  col += p3d_Material.diffuse * 0.6;
+
+  col.r += 0.1 * cos(worldPosition.x * 0.03);
+  col.g += 0.03 * cos(worldPosition.y * 0.05);
+  col.b += 0.1 * cos(worldPosition.z * 0.04);
+
   // I don't think the math is right, but the effect is good.
   // feel free to fix.
   vec3 view = normalize(cameraPosition - position.xyz);
