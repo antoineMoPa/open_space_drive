@@ -22,9 +22,9 @@ void main() {
 
   col += p3d_Material.diffuse * 0.6;
 
-  col.r += 0.1 * cos(worldPosition.x * 0.03);
+  col.r += 0.1 * cos(worldPosition.x * 0.05);
   col.g += 0.03 * cos(worldPosition.y * 0.05);
-  col.b += 0.1 * cos(worldPosition.z * 0.04);
+  col.b += 0.1 * cos(worldPosition.z * 0.05);
 
   // I don't think the math is right, but the effect is good.
   // feel free to fix.

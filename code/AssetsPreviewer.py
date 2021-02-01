@@ -30,6 +30,7 @@ class PreviewApp(OpenSpaceDriveApp):
         base.disableMouse()
 
         for asset_name in os.listdir("assets"):
+            print("Generating %s" % asset_name)
             asset = assetManager.generateAsset(asset_name, Vec3(0,0,0), Vec3(0,0,0))
             nodePath = assetManager.instanciateAsset(asset)
 

@@ -11,7 +11,7 @@ var assetMenuApp = new Vue({
           <div>
             <button v-for="asset in assetsList"
                     class="preview-button"
-                    v-on:click="addAsset(asset)">
+                    v-on:mousedown="addAsset(asset)">
               <img v-bind:src="'../assets/'+asset+'/preview/preview.png'"
                    v-bind:assetName="asset"
                    v-on:mouseenter="mouseEnter"
@@ -30,6 +30,7 @@ var assetMenuApp = new Vue({
   methods: {
     addAsset(assetName){
       window.addAsset(assetName);
+      window.focus();
     },
     mouseEnter(e){
       e.target.src = "../assets/" + e.target.getAttribute("assetName") + "/preview/preview.gif";

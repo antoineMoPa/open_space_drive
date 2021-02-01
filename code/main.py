@@ -555,6 +555,10 @@ class AIFleetController():
             i.update(dt, cameraPosition)
 
 class OpenSpaceDriveApp(ShowBase):
+
+    MODE_PLAY = 0
+    MODE_PLACE_ASSET = 1
+
     def __init__(self):
         ShowBase.__init__(self)
 
@@ -595,6 +599,9 @@ class OpenSpaceDriveApp(ShowBase):
         Refresh.addListener(self.refresh)
 
         base.mouseInterface.detachNode()
+
+        self.mode = OpenSpaceDriveApp.MODE_PLAY
+
 
     def refresh(self):
         self.refreshBuildings()
@@ -697,10 +704,10 @@ class OpenSpaceDriveApp(ShowBase):
 
         car_dir = self.playerCarController.direction
 
-        if self.assetsManager.ui.currentlyMovingUUID is not None:
+        if self.mode == OpenSpaceDriveApp.MODE_PLACE_ASSET:
             self.camera.setPos(self.car, Vec3(0.0,0.0,300.0))
             self.camera.lookAt(self.car)
-        else:
+        else: # (MODE_PLAY)
             model = self.playerCarController.model
             currentCamPos = self.camera.getPos(model)
             targetCamPos = Vec3(0.0,-25.0,4.0)
@@ -708,6 +715,7 @@ class OpenSpaceDriveApp(ShowBase):
             self.camera.setPos(model, currentCamPos * (1.0-convergeSpeed) + \
                                       (targetCamPos * convergeSpeed))
             self.camera.setHpr(self.car.getHpr())
+
 
         self.dlightnp.setPos(self.camera.getPos())
         self.dlightnp.headsUp(self.car)
@@ -731,7 +739,8 @@ class OpenSpaceDriveApp(ShowBase):
         self.addNewListenedKey('arrow_left')   # Roll left
         self.addNewListenedKey('arrow_right')  # Roll right
         self.addNewListenedKey('f5')           # Refresh
-        self.addNewListenedKey('Return')       # Place asset
+        self.addNewListenedKey('enter')        # Place asset
+        self.addNewListenedKey('escape')       # Quit asset placing mode
 
     def processPlayerInputTask(self, task):
         ROLL_LEFT_KEY  = "arrow_left"
@@ -773,8 +782,12 @@ class OpenSpaceDriveApp(ShowBase):
         elif self.keys[TURN_RIGHT_KEY]:
             self.playerCarController.angular_velocity += Vec3(0.0,0.0,2.0) * dt
 
-        if self.keys['Return']:
-            self.assetsManager.ui.currentlyMovingUUID = None
+        if self.keys['enter']:
+            self.assetsManager.ui.finalizePlaceAsset()
+
+        if self.keys['escape']:
+            self.mode = OpenSpaceDriveApp.MODE_PLAY
+            self.assetsManager.ui.cancelPlaceAsset()
 
         if self.keys[ROLL_LEFT_KEY] or self.keys[ROLL_RIGHT_KEY]:
             factor = 4.0 * dt
@@ -790,6 +803,9 @@ class OpenSpaceDriveApp(ShowBase):
         self.aiFleetController.update(dt, self.camera.getPos())
 
         self.last_update_car_time = task.time
+
+        if self.assetsManager.ui.shadowUUID is not None:
+            self.mode = OpenSpaceDriveApp.MODE_PLACE_ASSET
 
         if self.keys['f5']:
             Refresh.sendRefresh()
