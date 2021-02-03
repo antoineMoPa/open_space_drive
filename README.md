@@ -1,4 +1,6 @@
-# open_space_drive
+# Open Space Drive
+
+<img src="./header-image.png" alt="Open Space Drive">
 
 # Creating a new asset
 
