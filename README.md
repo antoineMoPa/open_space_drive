@@ -6,6 +6,7 @@
 
 Simply run:
 
+    cd code
     python3 main.py
 
 
