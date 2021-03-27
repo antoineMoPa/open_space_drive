@@ -2,6 +2,34 @@
 
 <img src="./header-image.png" alt="Open Space Drive">
 
+# Running
+
+Simply run:
+
+    python3 main.py
+
+
+# Controls
+
+Key mappings:
+
+    w             Forward
+    s             Backward
+    shift         Boost
+    q             Up
+    e             Down
+    space         Slow down
+    a             Turn left
+    d             Turn right
+    arrow_up      Head down
+    arrow_down    Head up
+    arrow_left    Roll left
+    arrow_right   Roll right
+    f5            Refresh
+    enter         Place asset
+    escape        Quit asset placing mode
+
+
 # Creating a new asset
 
 To get you started, copy the asset template folder:
